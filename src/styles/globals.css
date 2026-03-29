@@ -1,0 +1,88 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+  background: #060a14;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  min-height: 100%;
+  background: #060a14;
+  color: #e2e8f0;
+  font-family: 'Inter', sans-serif;
+}
+
+body {
+  overflow: hidden;
+}
+
+button,
+select,
+input,
+textarea {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.12);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255,255,255,0.2);
+}
+
+.panel {
+  @apply rounded-xl border border-white/[0.08] bg-white/[0.04] shadow-sm backdrop-blur-md;
+}
+
+.panel-elevated {
+  @apply rounded-xl border border-white/[0.08] bg-white/[0.06] backdrop-blur-xl shadow-md;
+}
+
+.text-balance {
+  text-wrap: balance;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes pulseSoft {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.35; }
+}
+
+/* Tailwind doesn't generate these unless referenced directly — declare them as utilities */
+@layer utilities {
+  .animate-pulseSoft {
+    animation: pulseSoft 1.8s ease-in-out infinite;
+  }
+  .animate-spin-slow {
+    animation: spin 0.9s linear infinite;
+  }
+}

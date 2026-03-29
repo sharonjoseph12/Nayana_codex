@@ -1,0 +1,13 @@
+WARNING! Running dev server in local mode without a project setup:
+  - Environment variables will not be pulled from Vercel
+  - Project settings are defined by local configuration
+
+To link your project, run `vercel dev` without `-L` or `--local` or `vercel link`.
+> NOTE: Requested port 3001 is already in use
+> Creating initial build
+error This project's package.json defines "packageManager": "yarn@npm@11.6.1". However the current global version of Yarn is 1.22.22.
+
+Presence of the "packageManager" field indicates that the project is meant to be used with Corepack, a tool included by default with all official Node.js distributions starting from 16.9 and 14.19.
+Corepack must currently be enabled by running corepack enable in your terminal. For more information, check out https://yarnpkg.com/corepack.
+Error: Failed to detect a server running on port 54828.
+Details: https://err.sh/vercel/vercel/now-static-build-failed-to-detect-a-server
