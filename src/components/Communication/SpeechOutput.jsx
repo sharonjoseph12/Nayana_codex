@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import PropTypes from 'prop-types';
 import { ChevronDown, ChevronUp, Mic2, RotateCcw, Sparkles, Trash2, Volume2 } from 'lucide-react';
 import ConversationThread from './ConversationThread';
@@ -6,7 +6,7 @@ import ConversationThread from './ConversationThread';
 const LANGUAGE_BADGES = { en: 'EN', hi: 'HI', kn: 'KN', ta: 'TA' };
 const LANGUAGE_LABELS = { en: 'English', hi: 'Hindi', kn: 'Kannada', ta: 'Tamil' };
 
-export default function SpeechOutput({
+const SpeechOutput = memo(function SpeechOutput({
   sentence,
   isGenerating,
   isSpeaking,
@@ -141,7 +141,9 @@ export default function SpeechOutput({
       )}
     </div>
   );
-}
+});
+
+export default SpeechOutput;
 
 SpeechOutput.propTypes = {
   sentence: PropTypes.string.isRequired,

@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import PropTypes from 'prop-types';
 import {
   AlertTriangle,
@@ -16,7 +17,7 @@ const ICONS = {
   Users,
 };
 
-export default function QuadrantCard({
+const QuadrantCard = memo(function QuadrantCard({
   quadrant,
   translations,
   phrases,
@@ -155,7 +156,9 @@ export default function QuadrantCard({
       />
     </div>
   );
-}
+});
+
+export default QuadrantCard;
 
 QuadrantCard.propTypes = {
   quadrant: PropTypes.string.isRequired,

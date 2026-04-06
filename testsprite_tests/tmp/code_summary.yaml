@@ -1,0 +1,54 @@
+version: "2"
+type: frontend
+tech_stack:
+  - React
+  - Vite
+  - TailwindCSS
+  - GazeCloudAPI
+  - Google Gemini API
+  - ElevenLabs API
+features:
+  - name: Patient Registration
+    description: Initial setup for patient sessions including name, age, and clinical condition.
+    files:
+      - src/PatientApp.jsx
+    endpoints:
+      - method: LOCAL
+        path: /register
+        description: Local registration state management.
+        auth_required: false
+  - name: Gaze Tracking Dashboard
+    description: High-precision eye-gaze communication interface with quadrant-based selection.
+    files:
+      - src/PatientApp.jsx
+      - src/hooks/useGazeTracking.js
+    endpoints:
+      - method: GET
+        path: https://api.gazerecorder.com/GazeCloudAPI.js
+        description: External script for gaze engine.
+        auth_required: false
+  - name: AI Vitals Monitor
+    description: Real-time clinical risk analysis using Google Gemini.
+    files:
+      - src/PatientApp.jsx
+    endpoints:
+      - method: POST
+        path: https://generativelanguage.googleapis.com
+        description: Gemini API for clinical reasoning.
+        auth_required: true
+  - name: Voice Synthesis
+    description: Speech dubbing for patient phrases using ElevenLabs.
+    files:
+      - src/PatientApp.jsx
+    endpoints:
+      - method: POST
+        path: https://api.elevenlabs.io
+        description: TTS generation.
+        auth_required: true
+known_limitations:
+  - issue: Gemini API Quota Exceeded (429)
+    location: src/PatientApp.jsx
+    impact: Real-time vitals monitoring fails under high load
+  - issue: Gaze Fallback Mode
+    location: src/hooks/useGazeTracking.js
+    impact: Tracking accuracy drops when eyes are not properly calibrated

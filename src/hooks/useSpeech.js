@@ -22,10 +22,16 @@ export function useSpeech() {
   const [activeSpeechLanguage, setActiveSpeechLanguage] = useState('en');
   const [elevenLabsAvailable, setElevenLabsAvailable] = useState(true);
 
+  // Initialize the absolute global singleton if needed
+  if (typeof window !== 'undefined' && !window.__nayana_speech_lock) {
+    window.__nayana_speech_lock = { text: '', timestamp: 0 };
+  }
+
   const releaseCurrentAudio = useCallback(() => {
     if (currentAudio.current) {
       currentAudio.current.pause();
       currentAudio.current.src = '';
+      currentAudio.current.load();
       currentAudio.current = null;
     }
     if (currentAudioUrl.current) {
@@ -111,11 +117,15 @@ export function useSpeech() {
 
         setElevenLabsAvailable(true);
         currentAudioUrl.current = audioUrl;
-
+ 
+        hasPlayedRef.current = false;
         const audio = new Audio(audioUrl);
         currentAudio.current = audio;
 
-        audio.onplay = () => setIsSpeaking(true);
+        audio.onplay = () => {
+          hasPlayedRef.current = true;
+          setIsSpeaking(true);
+        };
         audio.onended = () => {
           setIsSpeaking(false);
           releaseCurrentAudio();
@@ -123,8 +133,8 @@ export function useSpeech() {
         audio.onerror = () => {
           setIsSpeaking(false);
           releaseCurrentAudio();
-          // Only fall back if NOT aborted (avoid double-voice)
-          if (!controller.signal.aborted) {
+          // ONLY fallback if NO audio has played yet to avoid "Repeat" effect
+          if (!controller.signal.aborted && !hasPlayedRef.current) {
             speakWithBrowser(text, lang);
           }
         };
@@ -150,6 +160,21 @@ export function useSpeech() {
     async (text, lang = 'en') => {
       if (isMuted || !text) return;
 
+      const now = Date.now();
+      const globalLock = window.__nayana_speech_lock;
+      
+      // Strict Hardware Lock: 
+      // 1. Block identical phrases within 1500ms
+      // 2. Block ANY overlapping trigger within 800ms
+      if (
+        (text === globalLock.text && now - globalLock.timestamp < 1500) ||
+        (now - globalLock.timestamp < 800)
+      ) {
+        return;
+      }
+      
+      window.__nayana_speech_lock = { text, timestamp: now };
+      
       setActiveSpeechLanguage(lang);
       // Hard-stop everything (abort fetch + stop audio + cancel browser TTS)
       cancelSpeech();

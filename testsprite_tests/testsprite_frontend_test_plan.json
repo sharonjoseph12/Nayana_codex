@@ -1,0 +1,44 @@
+{
+  "project_name": "Nayana Pulse",
+  "requirement_groups": [
+    {
+      "requirement_group_name": "Clinical Workflow",
+      "requirements": [
+        {
+          "requirement_name": "Patient Registration",
+          "requirement_description": "Users should be able to register a patient and access the dashboard.",
+          "test_cases": [
+            {
+              "test_case_id": "REG-01",
+              "test_case_name": "Successful Registration",
+              "preconditions": "Application is running at http://localhost:5173",
+              "test_steps": [
+                {
+                  "step_id": 1,
+                  "step_description": "Enter 'Arjun Mehta' in Name field",
+                  "expected_result": "Name is entered"
+                },
+                {
+                  "step_id": 2,
+                  "step_description": "Enter '45' in Age field",
+                  "expected_result": "Age is entered"
+                },
+                {
+                  "step_id": 3,
+                  "step_description": "Enter 'ALS' in Condition field",
+                  "expected_result": "Condition is entered"
+                },
+                {
+                  "step_id": 4,
+                  "step_description": "Click 'Start Session'",
+                  "expected_result": "Dashboard is displayed"
+                }
+              ],
+              "priority": "High"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

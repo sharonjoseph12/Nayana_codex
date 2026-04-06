@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { memo, useMemo } from 'react';
 import PropTypes from 'prop-types';
 import { PHRASES, QUADRANT_CONFIG, TIME_OF_DAY_WEIGHTS, SEQUENTIAL_PREDICTIONS, getTimeProfile } from '../../constants/phrases';
 import QuadrantCard from './QuadrantCard';
@@ -55,7 +55,7 @@ BinaryButton.propTypes = {
   dwellProgress: PropTypes.number.isRequired,
 };
 
-export default function QuadrantGrid({
+const QuadrantGrid = memo(function QuadrantGrid({
   selectedQuadrant = null,
   dwellingOn = null,
   dwellProgress = 0,
@@ -170,7 +170,9 @@ export default function QuadrantGrid({
       </div>
     </div>
   );
-}
+});
+
+export default QuadrantGrid;
 
 QuadrantGrid.propTypes = {
   selectedQuadrant: PropTypes.string,

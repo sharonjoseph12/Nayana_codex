@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { memo, useEffect, useState } from 'react';
 import PropTypes from 'prop-types';
 import {
   Eye,
@@ -12,7 +12,7 @@ import {
 import { LANGUAGE_OPTIONS } from '../../constants/config';
 import { webrtcManager } from '../../services/webrtc';
 
-export default function TopBar({
+const TopBar = memo(function TopBar({
   patient,
   currentLanguage,
   setCurrentLanguage,
@@ -32,6 +32,8 @@ export default function TopBar({
   setPresentationMode,
   startEyeTracking,
   stopEyeTracking,
+  trackingEnabled,
+  setTrackingEnabled,
 }) {
   const [time, setTime] = useState(() => new Date());
   const [sessionCode, setSessionCode] = useState(null);
@@ -142,6 +144,19 @@ export default function TopBar({
 
         <button
           type="button"
+          onClick={() => setTrackingEnabled((previous) => !previous)}
+          className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm transition-all duration-300 ${
+            trackingEnabled 
+              ? 'border-medical/30 bg-medical/10 text-medical shadow-[0_0_15px_rgba(0,212,255,0.15)]' 
+              : 'border-white/10 bg-white/5 text-white/40'
+          }`}
+        >
+          <div className={`w-2 h-2 rounded-full mr-1 ${trackingEnabled ? 'bg-medical animate-pulse' : 'bg-white/20'}`} />
+          {trackingEnabled ? 'Vision AI ACTIVE' : 'Vision AI OFF'}
+        </button>
+
+        <button
+          type="button"
           onClick={startDemo}
           className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm ${
             isDemoRunning ? 'border-emergency/25 bg-emergency/10 text-emergency' : 'border-white/10 text-white/70'
@@ -194,7 +209,9 @@ export default function TopBar({
       </div>
     </header>
   );
-}
+});
+
+export default TopBar;
 
 TopBar.propTypes = {
   patient: PropTypes.object.isRequired,
@@ -216,4 +233,6 @@ TopBar.propTypes = {
   setPresentationMode: PropTypes.func.isRequired,
   startEyeTracking: PropTypes.func.isRequired,
   stopEyeTracking: PropTypes.func.isRequired,
+  trackingEnabled: PropTypes.bool.isRequired,
+  setTrackingEnabled: PropTypes.func.isRequired,
 };

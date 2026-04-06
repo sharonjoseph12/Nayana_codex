@@ -1,6 +1,0 @@
-WARNING! Running dev server in local mode without a project setup:
-  - Environment variables will not be pulled from Vercel
-  - Project settings are defined by local configuration
-
-To link your project, run `vercel dev` without `-L` or `--local` or `vercel link`.
-Error: Function Runtimes must have a valid version, for example `now-php@1.0.0`.

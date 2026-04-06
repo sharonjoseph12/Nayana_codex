@@ -1,7 +1,18 @@
 {
   "status": "commited",
   "type": "backend",
-  "scope": "diff",
+  "scope": "codebase",
   "localEndpoint": "http://localhost:5173",
-  "backendAuthType": "public"
+  "backendAuthType": "public",
+  "executionArgs": {
+    "projectName": "Nayana_codex",
+    "projectPath": "c:\\Users\\Sharon\\OneDrive\\Desktop\\Nayana_codex",
+    "testIds": [],
+    "additionalInstruction": "Focus on identifying network errors (specifically Gemini 429 Quota Exceeded) and GazeCloud tracking fallback/initialization issues. Identify any React console warnings that remain.",
+    "serverMode": "development",
+    "envs": {
+      "API_KEY": "sk-user-rvbHVQlxnCS7aFgtpJUCv1avR2WF16k9JD1nP_fZoxMExyYu2-f6L-HoJfusTIcp3vNOsOQCyIF3PM7_Ij7rA07UbeZm4GMqXY4uJIxeZy4q6BoH8c7f3nYK329eHFSmRC0"
+    }
+  },
+  "serverPort": 58059
 }

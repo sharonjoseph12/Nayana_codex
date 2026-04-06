@@ -1,228 +1,268 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import PropTypes from 'prop-types';
-import { FaceLandmarker, FilesetResolver } from '@mediapipe/tasks-vision';
+import { Camera, AlertCircle, Loader2 } from 'lucide-react';
 
-export default function GazeEngine({ faceDetected, onGazeUpdate }) {
-  const videoRef = useRef(null);
-  const requestRef = useRef(null);
-  const faceLandmarkerRef = useRef(null);
+// Using the same MediaPipe logic as the worker, but directly in the component for reliability
+// Throttled to ensure UI smoothness
+export default function GazeEngine({ faceDetected, onGazeUpdate, isEnabled = true }) {
   const [cameraAvailable, setCameraAvailable] = useState(false);
-  const [mediapipeReady, setMediapipeReady] = useState(false);
+  const [isInitializing, setIsInitializing] = useState(false);
+  const [error, setError] = useState(null);
   
-  // Real-time physical pupil coordinates from WebCam feed [0.0 to 1.0]
-  const [eyes, setEyes] = useState(null);
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
+  const requestRef = useRef(null);
+  const landmarkerRef = useRef(null);
+  const eyesRef = useRef(null);
+  const scanLinePos = useRef(0);
+  
+  const onGazeUpdateRef = useRef(onGazeUpdate);
+  useEffect(() => { onGazeUpdateRef.current = onGazeUpdate; }, [onGazeUpdate]);
 
-  const predictWebcam = useCallback(() => {
-    if (!videoRef.current || !videoRef.current.videoWidth || !faceLandmarkerRef.current) {
-      requestRef.current = requestAnimationFrame(predictWebcam);
+  // Unified Draw Function (60fps)
+  const drawUI = useCallback(() => {
+    const canvas = canvasRef.current;
+    const video = videoRef.current;
+    if (!canvas || !video || !video.videoWidth) return;
+
+    if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+    }
+
+    const ctx = canvas.getContext('2d');
+    const { width, height } = canvas;
+    ctx.clearRect(0, 0, width, height);
+
+    // 1. Draw Scanning Laser Line
+    scanLinePos.current = (scanLinePos.current + 2) % height;
+    ctx.strokeStyle = 'rgba(0, 212, 255, 0.4)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, scanLinePos.current);
+    ctx.lineTo(width, scanLinePos.current);
+    ctx.stroke();
+
+    // 2. Draw Eye Indicators
+    const eyes = eyesRef.current;
+    if (eyes) {
+      // Draw Face Box
+      if (eyes.faceBox) {
+        ctx.strokeStyle = faceDetected ? 'rgba(0, 255, 170, 0.8)' : 'rgba(0, 212, 255, 0.4)';
+        ctx.setLineDash([4, 4]);
+        ctx.strokeRect(
+          (1 - eyes.faceBox.maxX) * width,
+          eyes.faceBox.minY * height,
+          (eyes.faceBox.maxX - eyes.faceBox.minX) * width,
+          (eyes.faceBox.maxY - eyes.faceBox.minY) * height
+        );
+        ctx.setLineDash([]);
+      }
+
+      // Draw L / R Squares (Bold)
+      const drawEyeSquare = (box, label) => {
+        if (!box) return;
+        const x = (1 - box.maxX) * width;
+        const y = box.minY * height;
+        const w = (box.maxX - box.minX) * width;
+        const h = (box.maxY - box.minY) * height;
+        
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = '#00d4ff';
+        ctx.strokeRect(x - 2, y - 2, w + 4, h + 4);
+        
+        ctx.fillStyle = '#00d4ff';
+        ctx.font = 'bold 8px Inter, system-ui';
+        ctx.fillText(label, x, y - 6);
+      };
+
+      drawEyeSquare(eyes.leftEyeBox, 'L');
+      drawEyeSquare(eyes.rightEyeBox, 'R');
+    } else {
+      // Searching Text
+      ctx.fillStyle = 'rgba(0, 212, 255, 0.6)';
+      ctx.font = '10px DM Mono';
+      ctx.fillText('VISION SEARCHING...', 10, 20);
+    }
+  }, [faceDetected]);
+
+  // Main Detection Loop
+  const runDetection = useCallback(async () => {
+    if (!isEnabled || !videoRef.current || !landmarkerRef.current) {
+      requestRef.current = requestAnimationFrame(runDetection);
       return;
     }
-    
-    const startTimeMs = performance.now();
-    const results = faceLandmarkerRef.current.detectForVideo(videoRef.current, startTimeMs);
 
-    if (results.faceLandmarks && results.faceLandmarks.length > 0) {
-      const landmarks = results.faceLandmarks[0];
-      
-      let minX = 1, minY = 1, maxX = 0, maxY = 0;
-      for (let i = 0; i < landmarks.length; i++) {
-        if (landmarks[i].x < minX) minX = landmarks[i].x;
-        if (landmarks[i].x > maxX) maxX = landmarks[i].x;
-        if (landmarks[i].y < minY) minY = landmarks[i].y;
-        if (landmarks[i].y > maxY) maxY = landmarks[i].y;
+    if (videoRef.current.readyState >= 2) {
+      try {
+        const results = landmarkerRef.current.detect(videoRef.current);
+        if (results && results.faceLandmarks?.[0]) {
+          const lms = results.faceLandmarks[0];
+          
+          // Calculate Bounding Boxes
+          const getBox = (indices) => {
+            let minX = 1, minY = 1, maxX = 0, maxY = 0;
+            indices.forEach(i => {
+              const p = lms[i];
+              if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x;
+              if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y;
+            });
+            return { minX, minY, maxX, maxY };
+          };
+
+          const faceBox = getBox([10, 152, 234, 454]);
+          const leftEyeBox = getBox([33, 133, 157, 158, 159, 160, 161]);
+          const rightEyeBox = getBox([362, 263, 384, 385, 386, 387, 388]);
+
+          // Eye Ratios for Iris Tracking
+          const l_out = lms[33], l_in = lms[133], r_in = lms[362], r_out = lms[263];
+          const lp = lms[468], rp = lms[473];
+          
+          const denL = (l_in.x - l_out.x) || 0.001;
+          const denR = (r_out.x - r_in.x) || 0.001;
+          const leftRatio = (lp.x - l_out.x) / denL;
+          const rightRatio = (rp.x - r_in.x) / denR;
+
+          eyesRef.current = {
+            faceBox, 
+            leftEyeBox, 
+            rightEyeBox,
+            irisX: (leftRatio + rightRatio) / 2,
+            irisY: (lp.y + rp.y) / 2
+          };
+
+          onGazeUpdateRef.current?.({ 
+            irisX: eyesRef.current.irisX, 
+            irisY: eyesRef.current.irisY,
+            stability: 0.8
+          });
+        } else {
+          eyesRef.current = null;
+        }
+      } catch (err) {
+        console.error('Vision processing error:', err);
       }
-
-      // Landmarks for robust gaze estimation
-      // Left Eye: 33 (outer), 133 (inner), 468 (iris center)
-      // Right Eye: 362 (inner), 263 (outer), 473 (iris center)
-      const lp = landmarks[468];
-      const rp = landmarks[473];
-      const l_out = landmarks[33];
-      const l_in = landmarks[133];
-      const r_in = landmarks[362];
-      const r_out = landmarks[263];
-
-      if (lp && rp && l_in && r_in) {
-        // Calculate horizontal gaze ratio (0.5 = looking straight)
-        // Note: we average both eyes for stability
-        const leftRatio = (lp.x - l_out.x) / (l_in.x - l_out.x);
-        const rightRatio = (rp.x - r_in.x) / (r_out.x - r_in.x);
-        const gazeX = (leftRatio + rightRatio) / 2;
-
-        // Calculate vertical gaze ratio (using inner corner height as reference)
-        const gazeY = (lp.y + rp.y) / 2; // Simple Y for now
-
-        setEyes({
-          faceBox: { minX, minY, maxX, maxY },
-          left: { x: lp.x, y: lp.y },
-          right: { x: rp.x, y: rp.y },
-          vector: { x: gazeX, y: gazeY }
-        });
-
-        // Pass the high-frequency iris stability data to parent
-        onGazeUpdate?.({
-          irisX: gazeX,
-          irisY: gazeY,
-          stability: results.faceBlendshapes?.[0]?.categories?.find(c => c.categoryName === 'eyeLookInLeft')?.score || 0.5
-        });
-      }
-    } else {
-      setEyes(null);
     }
-    
-    requestRef.current = requestAnimationFrame(predictWebcam);
-  }, [onGazeUpdate]);
 
+    drawUI();
+    requestRef.current = requestAnimationFrame(runDetection);
+  }, [isEnabled, drawUI]);
+
+  // Hardware Initialization
   useEffect(() => {
-    let activeStream;
+    let activeStream = null;
     let isActive = true;
 
-    async function startCamera() {
+    async function init() {
+      if (!isEnabled) return;
+      setIsInitializing(true);
+      setError(null);
+
       try {
+        // 1. Load MediaPipe
+        const vision = await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest');
+        const { FaceLandmarker, FilesetResolver } = vision;
+        const filesetResolver = await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm');
+        
+        landmarkerRef.current = await FaceLandmarker.createFromOptions(filesetResolver, {
+          baseOptions: {
+            modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task',
+            delegate: 'GPU'
+          },
+          runningMode: 'IMAGE',
+          numFaces: 1
+        });
+
+        // 2. Start Camera
         const stream = await navigator.mediaDevices.getUserMedia({
           video: { width: 320, height: 240, facingMode: 'user' },
-          audio: false,
+          audio: false
         });
-        if (!isActive) { stream.getTracks().forEach((t) => t.stop()); return; }
+
+        if (!isActive) {
+          stream.getTracks().forEach(t => t.stop());
+          return;
+        }
+
         activeStream = stream;
-        setCameraAvailable(true);
         if (videoRef.current) videoRef.current.srcObject = stream;
-      } catch (error) {
-        setCameraAvailable(false);
-      }
-    }
+        setCameraAvailable(true);
+        setIsInitializing(false);
+        
+        // 3. Start Loop
+        requestRef.current = requestAnimationFrame(runDetection);
 
-    async function loadMediaPipe() {
-      try {
-        const filesetResolver = await FilesetResolver.forVisionTasks(
-          'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm'
-        );
-        faceLandmarkerRef.current = await FaceLandmarker.createFromOptions(filesetResolver, {
-          baseOptions: {
-            modelAssetPath: `https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task`,
-            delegate: 'GPU',
-          },
-          outputFaceBlendshapes: true, // Needed for stability tracking
-          runningMode: 'VIDEO',
-          numFaces: 1,
-        });
-        if (isActive) setMediapipeReady(true);
       } catch (err) {
-        if (isActive) setMediapipeReady(false);
+        console.error('Core Vision Init Failure:', err);
+        setError(err.message);
+        setIsInitializing(false);
       }
     }
 
-    if (navigator.mediaDevices?.getUserMedia) { startCamera(); loadMediaPipe(); }
+    init();
 
     return () => {
       isActive = false;
       if (requestRef.current) cancelAnimationFrame(requestRef.current);
-      activeStream?.getTracks().forEach((track) => track.stop());
-      if (faceLandmarkerRef.current) { try { faceLandmarkerRef.current.close(); } catch {} }
+      activeStream?.getTracks().forEach(t => t.stop());
+      if (landmarkerRef.current) landmarkerRef.current.close();
     };
-  }, []);
+  }, [isEnabled, runDetection]);
 
-  useEffect(() => {
-    if (!cameraAvailable || !mediapipeReady) return;
-    if (videoRef.current?.readyState >= 2) predictWebcam();
-    else videoRef.current?.addEventListener('loadeddata', predictWebcam, { once: true });
-    return () => videoRef.current?.removeEventListener('loadeddata', predictWebcam);
-  }, [cameraAvailable, mediapipeReady, predictWebcam]);
-
-  const getTargetStyle = (pos) => {
-    if (!pos) return { display: 'none' };
-    return {
-      position: 'absolute',
-      left: `${(1 - pos.x) * 100}%`,
-      top: `${pos.y * 100}%`,
-      width: '18px',
-      height: '18px',
-      transform: 'translate(-50%, -50%)',
-      border: faceDetected ? '1px solid rgba(0, 255, 170, 0.6)' : '1px solid rgba(0, 212, 255, 0.4)',
-      boxShadow: faceDetected ? 'inset 0 0 6px rgba(0, 255, 170, 0.2)' : 'inset 0 0 6px rgba(0, 212, 255, 0.2)',
-      transition: 'opacity 0.1s',
-      opacity: faceDetected ? 0.95 : 0.4,
-    };
-  };
+  if (!isEnabled) return null;
 
   return (
-    <div
-      style={{
-        position: 'fixed',
-        bottom: '80px',
-        left: '16px',
-        width: '120px',
-        height: '90px',
-        borderRadius: '10px',
-        overflow: 'hidden',
-        border: '1px solid rgba(0,212,255,0.35)',
-        zIndex: 50,
-        background: '#000',
-        boxShadow: '0 8px 32px rgba(0,0,0,0.5), 0 0 0 1px rgba(0,212,255,0.08)',
-      }}
-    >
+    <div style={{
+      position: 'fixed', bottom: '80px', left: '16px',
+      width: '120px', height: '90px', borderRadius: '12px',
+      overflow: 'hidden', border: '1px solid rgba(0,212,255,0.3)',
+      zIndex: 50, background: '#080c10',
+      boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+    }}>
       <video
-        id="nayana-iris-video"
         ref={videoRef}
-        autoPlay
-        playsInline
-        muted
+        autoPlay playsInline muted
         style={{
-          width: '100%',
-          height: '100%',
-          objectFit: 'cover',
-          transform: 'scaleX(-1)',
-          opacity: 0.85,
+          width: '100%', height: '100%', objectFit: 'cover',
+          transform: 'scaleX(-1)', opacity: 0.8,
           display: cameraAvailable ? 'block' : 'none',
         }}
       />
-
-      {cameraAvailable && (
-        <div style={{ position: 'absolute', inset: 0, zIndex: 10, pointerEvents: 'none' }}>
-          {eyes?.faceBox && (
-            <div style={{
-              position: 'absolute',
-              left: `${(1 - eyes.faceBox.maxX) * 100}%`,
-              top: `${eyes.faceBox.minY * 100}%`,
-              width: `${(eyes.faceBox.maxX - eyes.faceBox.minX) * 100}%`,
-              height: `${(eyes.faceBox.maxY - eyes.faceBox.minY) * 100}%`,
-              border: faceDetected ? '1px dashed rgba(0, 255, 170, 0.4)' : '1px dashed rgba(0, 212, 255, 0.3)',
-              opacity: faceDetected ? 1 : 0.2,
-            }} />
-          )}
-          <div style={getTargetStyle(eyes?.left)}>
-             <div style={{ position: 'absolute', top: '50%', left: '50%', width: 2, height: 2, background: faceDetected ? '#00ffaa' : '#00d4ff', borderRadius: '50%', transform: 'translate(-50%, -50%)' }} />
-          </div>
-          <div style={getTargetStyle(eyes?.right)}>
-             <div style={{ position: 'absolute', top: '50%', left: '50%', width: 2, height: 2, background: faceDetected ? '#00ffaa' : '#00d4ff', borderRadius: '50%', transform: 'translate(-50%, -50%)' }} />
-          </div>
-        </div>
-      )}
-
-      {!cameraAvailable && (
-        <div style={{
+      <canvas
+        ref={canvasRef}
+        style={{
           position: 'absolute', inset: 0,
-          display: 'flex', flexDirection: 'column',
-          alignItems: 'center', justifyContent: 'center', gap: '4px',
-          color: 'rgba(255,255,255,0.35)', fontSize: '9px', fontFamily: 'DM Mono, monospace',
+          width: '100%', height: '100%', pointerEvents: 'none',
+          zIndex: 10,
+        }}
+      />
+
+      {(isInitializing || !cameraAvailable) && !error && (
+        <div style={{
+          position: 'absolute', inset: 0, background: 'rgba(8,12,16,0.9)',
+          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+          gap: '8px', padding: '10px'
         }}>
-          <div style={{ width: 16, height: 16, borderRadius: '50%', border: '1.5px solid rgba(0,212,255,0.15)', borderTopColor: 'rgba(0,212,255,0.7)', animation: 'spin 0.9s linear infinite' }} />
-          CAM…
+          <Loader2 className="animate-spin text-medical" size={20} />
+          <span style={{ fontSize: '10px', color: '#00d4ff', fontFamily: 'DM Mono' }}>ENGINE INIT...</span>
         </div>
       )}
 
-      <div style={{ position: 'absolute', top: '3px', left: '4px', display: 'flex', alignItems: 'center', gap: '3px', zIndex: 20 }}>
-        <div style={{ width: 4, height: 4, borderRadius: '50%', background: faceDetected ? '#00ffaa' : '#ff3d5a', animation: 'pulseSoft 1.5s infinite' }} />
-        <span style={{ fontFamily: 'DM Mono, monospace', fontSize: '7px', color: faceDetected ? '#00ffaa' : '#ff3d5a' }}>
-          {cameraAvailable ? (faceDetected ? 'LIVE' : 'NO FACE') : 'STARTING'}
-        </span>
-      </div>
-      <div style={{ position: 'absolute', inset: 0, background: 'repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.06) 2px,rgba(0,0,0,0.06) 3px)', pointerEvents: 'none', zIndex: 15 }} />
+      {error && (
+        <div style={{
+          position: 'absolute', inset: 0, background: 'rgba(255,0,0,0.1)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          padding: '10px'
+        }}>
+          <AlertCircle className="text-emergency" size={20} />
+        </div>
+      )}
     </div>
   );
 }
 
 GazeEngine.propTypes = {
   faceDetected: PropTypes.bool.isRequired,
-  onGazeUpdate: PropTypes.func,
+  onGazeUpdate: PropTypes.func.isRequired,
+  isEnabled: PropTypes.bool,
 };

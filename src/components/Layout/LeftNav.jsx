@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import PropTypes from 'prop-types';
 import {
   BarChart2,
@@ -17,7 +18,7 @@ const NAV_ITEMS = [
   { id: 'painmap', icon: MapPin, label: 'Pain Map' },
 ];
 
-export default function LeftNav({ activePage, setActivePage }) {
+const LeftNav = memo(function LeftNav({ activePage, setActivePage }) {
   return (
     <aside className="ml-4 mr-3 flex w-14 shrink-0 flex-col items-center gap-3 rounded-[28px] border border-white/[0.08] bg-white/[0.04] backdrop-blur-md py-4">
       {NAV_ITEMS.map((item) => {
@@ -42,7 +43,9 @@ export default function LeftNav({ activePage, setActivePage }) {
       })}
     </aside>
   );
-}
+});
+
+export default LeftNav;
 
 LeftNav.propTypes = {
   activePage: PropTypes.string.isRequired,

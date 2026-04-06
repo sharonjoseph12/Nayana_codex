@@ -47,7 +47,11 @@ export default function CaregiverHubPage({
       onSendResponse(responseText.trim());
     } else {
       const channel = new BroadcastChannel('nayana_comms');
-      channel.postMessage({ type: 'CAREGIVER_RESPONSE', text: responseText.trim() });
+      channel.postMessage({ 
+        type: 'CAREGIVER_RESPONSE', 
+        text: responseText.trim(),
+        tabId: typeof window !== 'undefined' ? window.__nayana_tab_id : 'unknown'
+      });
       channel.close();
     }
     

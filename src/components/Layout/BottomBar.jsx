@@ -1,8 +1,9 @@
+import { memo } from 'react';
 import PropTypes from 'prop-types';
 
 const shortcuts = ['F1 Demo', 'P Present', 'M Medical', 'S Social', 'N Personal', 'E Emergency', 'R Repeat', 'X Clear', 'ESC Stop'];
 
-export default function BottomBar({ isDemoRunning }) {
+const BottomBar = memo(function BottomBar({ isDemoRunning }) {
   return (
     <footer className="mx-4 mb-4 mt-3 flex flex-wrap items-center justify-between gap-3 rounded-[24px] border border-white/[0.08] bg-white/[0.04] backdrop-blur-md px-4 py-3">
       <div className="flex flex-wrap gap-2">
@@ -17,7 +18,9 @@ export default function BottomBar({ isDemoRunning }) {
       </div>
     </footer>
   );
-}
+});
+
+export default BottomBar;
 
 BottomBar.propTypes = {
   isDemoRunning: PropTypes.bool.isRequired,

@@ -1,9 +1,10 @@
+import { memo } from 'react';
 import PropTypes from 'prop-types';
 import { Gauge, ShieldAlert } from 'lucide-react';
 import VitalsSidebar from '../Vitals/VitalsSidebar';
 import VitalCard from '../Vitals/VitalCard';
 
-export default function LeftSidebar({ vitals }) {
+const LeftSidebar = memo(function LeftSidebar({ vitals }) {
   return (
     <div className="space-y-4 pr-2">
       <div className="panel-elevated p-4">
@@ -31,7 +32,9 @@ export default function LeftSidebar({ vitals }) {
       </div>
     </div>
   );
-}
+});
+
+export default LeftSidebar;
 
 LeftSidebar.propTypes = {
   vitals: PropTypes.shape({

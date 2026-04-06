@@ -1,7 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import PropTypes from 'prop-types';
 
-const SOS_GAZE_MS = 2000; // 2-second gaze = immediate trigger
 
 export default function SOSAnchor({ onTrigger, dwellingOn = null, dwellProgress = 0 }) {
   const id = 'sos-anchor-btn';

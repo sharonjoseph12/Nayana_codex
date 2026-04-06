@@ -3,7 +3,6 @@ import { useState, useRef, useCallback } from 'react';
 export function useDwellTimer(onTrigger, dwellTimeMs = 800) {
   const [progress, setProgress] = useState(0);
   const [isHovering, setIsHovering] = useState(false);
-  const timerRef = useRef(null);
   const animationFrameRef = useRef(null);
   const startTimeRef = useRef(null);
 

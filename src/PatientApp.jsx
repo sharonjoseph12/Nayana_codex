@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useDeferredValue } from 'react';
 import TopBar from './components/Layout/TopBar';
 import LeftNav from './components/Layout/LeftNav';
 import LeftSidebar from './components/Layout/LeftSidebar';
@@ -26,10 +26,17 @@ import { useSpeech } from './hooks/useSpeech';
 import { useClinicalAI } from './hooks/useClinicalAI';
 import { useCaregiverAlerts } from './hooks/useCaregiverAlerts';
 import { useEmotionDetection } from './hooks/useEmotionDetection';
+import { useDemoLogic } from './hooks/useDemoLogic';
 import { PATIENT as DEFAULT_PATIENT, encodeTrackableValue } from './constants/config';
 import { CLINICAL_CATEGORIES, PHRASES, QUADRANT_CONFIG } from './constants/phrases';
 import { TRANSLATIONS } from './constants/translations';
 import { generateHandoverReport, generateSentence } from './services/gemini';
+import { synthesizeWithElevenLabs } from './services/elevenlabs';
+
+// Initialize Global Tab ID for isolation
+if (typeof window !== 'undefined' && !window.__nayana_tab_id) {
+  window.__nayana_tab_id = Math.random().toString(36).substring(7);
+}
 import { buildPDFHTML } from './services/pdf';
 import { buildEmotionMessage, buildSOSMessage, sendWhatsAppAlert } from './services/whatsapp';
 import { webrtcManager } from './services/webrtc';
@@ -39,52 +46,7 @@ function getTimeAgo(minutes) {
   return date.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
 }
 
-function ToastViewport({ toasts }) {
-  return (
-    <div className="pointer-events-none fixed right-4 top-24 z-50 flex max-w-sm flex-col gap-2">
-      {toasts.map((toast) => (
-        <div
-          key={toast.id}
-          className="rounded-2xl border px-4 py-3 shadow-glow backdrop-blur-xl"
-          style={{
-            borderColor:
-              toast.tone === 'success'
-                ? 'rgba(0,255,170,0.22)'
-                : toast.tone === 'warning'
-                  ? 'rgba(255,215,0,0.22)'
-                  : 'rgba(0,212,255,0.22)',
-            background:
-              toast.tone === 'success'
-                ? 'rgba(0,255,170,0.08)'
-                : toast.tone === 'warning'
-                  ? 'rgba(255,215,0,0.08)'
-                  : 'rgba(0,212,255,0.08)',
-          }}
-        >
-          <div className="text-sm text-white">{toast.message}</div>
-        </div>
-      ))}
-    </div>
-  );
-}
 
-function CaregiverResponseOverlay({ message, onDismiss }) {
-  if (!message) return null;
-
-  return (
-    <div className="pointer-events-none fixed inset-x-0 top-24 z-40 flex justify-center px-4">
-      <div className="pointer-events-auto max-w-xl rounded-[24px] border border-social/20 bg-social/10 px-5 py-4 shadow-glow backdrop-blur-xl">
-        <div className="text-xs uppercase tracking-[0.28em] text-social/80">Caregiver Response</div>
-        <div className="mt-2 text-lg text-white">{message.text}</div>
-        <div className="mt-3 flex justify-end">
-          <button type="button" onClick={onDismiss} className="rounded-full border border-white/10 px-3 py-1 text-xs text-white/65">
-            Dismiss
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 export default function PatientApp() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -94,6 +56,10 @@ export default function PatientApp() {
   const [currentLanguage, setCurrentLanguage] = useState('en');
   const [generatedSentence, setGeneratedSentence] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
+  
+  const deferredSentence = useDeferredValue(generatedSentence);
+  const deferredGenerating = useDeferredValue(isGenerating);
+
   const [sentenceSource, setSentenceSource] = useState('fallback');
   const [conversationHistory, setConversationHistory] = useState([]);
   const [clinicalLog, setClinicalLog] = useState([]);
@@ -108,7 +74,6 @@ export default function PatientApp() {
   const [clinicalReport, setClinicalReport] = useState('');
   const [reportLoading, setReportLoading] = useState(false);
   const [presentationMode, setPresentationMode] = useState(false);
-  const [isDemoRunning, setIsDemoRunning] = useState(false);
   const [lastSelectedPhrase, setLastSelectedPhrase] = useState(null);
   const [lastSelectedPhraseKey, setLastSelectedPhraseKey] = useState(null);
   const [lastInteractionAt, setLastInteractionAt] = useState(Date.now());
@@ -118,13 +83,18 @@ export default function PatientApp() {
   const [toasts, setToasts] = useState([]);
   const [caregiverResponse, setCaregiverResponse] = useState(null);
   const [densityMode, setDensityMode] = useState('normal'); // 'normal' | 'focused' | 'binary'
+  const [trackingEnabled, setTrackingEnabled] = useState(true);
 
-  const demoTimeouts = useRef([]);
 
   const vitals = useVitals();
   const { isSpeaking, isMuted, autoSpeak, speak, cancelSpeech, toggleMute, setAutoSpeak, voiceMode, setVoiceMode, activeSpeechLanguage, elevenLabsAvailable } = useSpeech();
   const clinicalAI = useClinicalAI(clinicalLog);
   const { sendManagedAlert } = useCaregiverAlerts();
+
+  const isSpeakingRef = useRef(isSpeaking);
+  useEffect(() => { isSpeakingRef.current = isSpeaking; }, [isSpeaking]);
+  
+  const lastSpeechRef = useRef({ text: '', timestamp: 0 });
 
   const showToast = useCallback((message, tone = 'info') => {
     const id = `${Date.now()}-${Math.random()}`;
@@ -175,57 +145,63 @@ export default function PatientApp() {
       setGeneratedSentence('');
       setLastInteractionAt(Date.now());
 
-      // Build environmental context for Gemini
-      const envContext = {
-        caregiver: patient.caregiver,
-        room: patient.room,
-        heartRate: vitals.heartRate,
-        stressLevel: vitals.stressLevel,
-      };
+      const interactionId = `${Date.now()}-${Math.random().toString(36).substring(10)}`;
 
       try {
-        const result = await generateSentence(quadrant, phrase, currentLanguage, conversationHistory, envContext);
-        setGeneratedSentence(result.text);
-        setSentenceSource(result.source);
-
-        const severity =
-          options.severityOverride ??
-          (phrase === 'HELP' || phrase === 'Breathe' ? 4 : phrase === 'Pain' || phrase === 'Doctor' ? 3 : 2);
-
-        const entry = {
-          id: Date.now(),
-          timestamp: new Date(),
-          quadrant,
-          phrase,
-          sentence: result.text,
-          category: options.categoryOverride || CLINICAL_CATEGORIES[`${quadrant}-${phrase}`] || 'GENERAL',
-          severity,
-          language: currentLanguage,
-        };
-
-        setClinicalLog((previous) => [...previous, entry].slice(-100));
-        setConversationHistory((previous) => [...previous, entry].slice(-20));
-        addCaregiverEntry(quadrant, `${quadrant} -> ${phrase}`, QUADRANT_CONFIG[quadrant]?.color, {
-          phrase,
-          sentence: result.text,
+        const result = await generateSentence(quadrant, phrase, currentLanguage, conversationHistory, {
+          heartRate: vitals.heartRate,
+          stressLevel: vitals.stressLevel,
+          caregiver: patient.caregiver,
+          room: patient.room,
         });
 
-        if (autoSpeak || options.forceSpeak) {
-          window.setTimeout(() => {
-            speak(result.text, currentLanguage);
-          }, 500);
-        }
+        if (result.text) {
+          setGeneratedSentence(result.text);
+          setSentenceSource(result.source);
+          setLastSelectedPhrase(result.text);
+          setLastInteractionAt(new Date());
 
-        return result.text;
+          const entry = {
+            id: interactionId,
+            quadrant,
+            phrase,
+            sentence: result.text,
+            timestamp: new Date(),
+            source: result.source,
+            language: currentLanguage,
+          };
+
+          setClinicalLog((prev) => [...prev, entry].slice(-100));
+          setConversationHistory((prev) => [...prev, entry].slice(-50));
+          
+          addCaregiverEntry(quadrant, `${quadrant} -> ${phrase}`, QUADRANT_CONFIG[quadrant]?.color, {
+            phrase,
+            sentence: result.text,
+            interactionId
+          });
+
+          // Sync via BroadcastChannel (Include Tab ID)
+          const commsChannel = new BroadcastChannel('nayana_comms');
+          commsChannel.postMessage({
+            type: 'PHRASE_SELECTED',
+            text: result.text,
+            interactionId,
+            tabId: window.__nayana_tab_id
+          });
+
+          if (autoSpeak || options.forceSpeak) {
+            speak(result.text, currentLanguage);
+          }
+          return result.text;
+        }
       } catch (error) {
-        console.error(error);
-        showToast('Could not generate the sentence', 'warning');
-        return '';
+        console.error('Selection error:', error);
+        showToast('Failed to process selection', 'warning');
       } finally {
         setIsGenerating(false);
       }
     },
-    [addCaregiverEntry, autoSpeak, conversationHistory, currentLanguage, isGenerating, patient, showToast, speak, vitals]
+    [autoSpeak, conversationHistory, currentLanguage, patient.caregiver, patient.room, speak, vitals.heartRate, vitals.stressLevel, addCaregiverEntry, showToast]
   );
 
   const handleQuadrantSelect = useCallback((quadrantName) => {
@@ -310,46 +286,11 @@ export default function PatientApp() {
     });
   }, [clinicalAI, clinicalLog, clinicalReport, showToast, vitals]);
 
-  const stopDemo = useCallback(() => {
-    demoTimeouts.current.forEach((timeout) => window.clearTimeout(timeout));
-    demoTimeouts.current = [];
-    setIsDemoRunning(false);
-  }, []);
-
-  const startChoreographedDemo = useCallback(() => {
-    if (isDemoRunning) {
-      stopDemo();
-      return;
-    }
-
-    setActivePage('dashboard');
-    setIsDemoRunning(true);
-    const addTimeout = (callback, delay) => {
-      const timeout = window.setTimeout(callback, delay);
-      demoTimeouts.current.push(timeout);
-    };
-
-    addTimeout(() => {
-      setSelectedQuadrant(null);
-      setCurrentLanguage('en');
-    }, 400);
-    addTimeout(() => handleQuadrantSelect('Medical'), 1800);
-    addTimeout(() => handlePhraseSelect('Medical', 'Pain'), 3200);
-    addTimeout(() => {
-      setCurrentLanguage('kn');
-      setSelectedQuadrant('Social');
-    }, 9000);
-    addTimeout(() => handlePhraseSelect('Social', 'Hello'), 10500);
-    addTimeout(() => {
-      setCurrentLanguage('en');
-      setSelectedQuadrant('Emergency');
-    }, 17000);
-    addTimeout(() => triggerSOS(), 19000);
-    addTimeout(() => {
-      setSosActive(false);
-      setIsDemoRunning(false);
-    }, 26000);
-  }, [isDemoRunning, stopDemo, handleQuadrantSelect, handlePhraseSelect, triggerSOS]);
+  const { isDemoRunning, startDemo, stopDemo } = useDemoLogic({
+    onQuadrantSelect: handleQuadrantSelect,
+    onPhraseSelect: handlePhraseSelect,
+    onSOSTrigger: triggerSOS,
+  });
 
   const { trackingMode, gazePosition, headPosition, dwellingOn, dwellProgress, gazeAccuracy, gazeTrail, faceDetected, isCalibrated, isLocked, handleIrisUpdate, registerElement, startEyeTracking, stopEyeTracking, setTrackingMode } = useGazeTracking({
     onQuadrantSelect: handleQuadrantSelect,
@@ -395,7 +336,7 @@ export default function PatientApp() {
       if (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA') return;
       if (event.key === 'F1') {
         event.preventDefault();
-        startChoreographedDemo();
+        startDemo();
       }
       if (event.key === 'Escape') stopDemo();
       if (event.key === 'm' || event.key === 'M') handleQuadrantSelect('Medical');
@@ -424,6 +365,9 @@ export default function PatientApp() {
   useEffect(() => {
     const channel = new BroadcastChannel('nayana_comms');
     channel.onmessage = (event) => {
+      // Ignore messages from this same tab to prevent Echo Loops
+      if (event.data?.tabId === window.__nayana_tab_id) return;
+
       if (event.data?.type === 'CAREGIVER_RESPONSE' && event.data.text) {
         setCaregiverResponse({ text: event.data.text, timestamp: Date.now() });
         speak(event.data.text, currentLanguage);
@@ -441,7 +385,8 @@ export default function PatientApp() {
 
   useEffect(() => {
     if (webrtcManager.isHost && webrtcManager.connection) {
-      const { formatDuration, ...serializableVitals } = vitals;
+      const serializableVitals = { ...vitals };
+      delete serializableVitals.formatDuration;
       webrtcManager.sendData({
         type: 'SYNC_STATE',
         vitals: serializableVitals,
@@ -457,7 +402,8 @@ export default function PatientApp() {
   useEffect(() => {
     const handleWebRTC = (data) => {
       if (data.type === 'REQUEST_SYNC') {
-        const { formatDuration, ...serializableVitals } = vitals;
+        const serializableVitals = { ...vitals };
+        delete serializableVitals.formatDuration;
         webrtcManager.sendData({
           type: 'SYNC_STATE',
           vitals: serializableVitals,
@@ -475,6 +421,9 @@ export default function PatientApp() {
           data.payload.extras
         );
       } else if (data.type === 'CAREGIVER_RESPONSE' && data.text) {
+        // Ignore messages originating from the same logical event / tab
+        if (data.tabId === window.__nayana_tab_id) return;
+        
         setCaregiverResponse({ text: data.text, timestamp: Date.now() });
         speak(data.text, currentLanguage);
         showToast('Caregiver response received', 'success');
@@ -487,10 +436,14 @@ export default function PatientApp() {
 
   const currentTranslations = useMemo(() => TRANSLATIONS[currentLanguage] || TRANSLATIONS.en, [currentLanguage]);
 
-  function handleLogin(patientData) {
+  const handleLogin = useCallback((patientData) => {
     setPatient(patientData);
     setIsLoggedIn(true);
-  }
+  }, []);
+
+  const handleWhatsAppTest = useCallback(() => {
+    sendWhatsAppAlert(`NAYANA TEST\nSystem working correctly\nTime: ${new Date().toLocaleTimeString('en-IN')}`);
+  }, []);
 
   if (!isLoggedIn) {
     return <LoginPage onLogin={handleLogin} />;
@@ -500,8 +453,6 @@ export default function PatientApp() {
     <div className={`relative flex h-screen flex-col overflow-hidden bg-base ${presentationMode ? 'text-[1.04rem]' : ''}`}>
       <NeuralBackground />
       <GazeReticle position={gazePosition} trail={gazeTrail} dwellingOn={dwellingOn} dwellProgress={dwellProgress} isLocked={isLocked} />
-      <ToastViewport toasts={toasts} />
-      <CaregiverResponseOverlay message={caregiverResponse} onDismiss={() => setCaregiverResponse(null)} />
 
       <TopBar
         patient={patient}
@@ -518,11 +469,16 @@ export default function PatientApp() {
         setVoiceMode={setVoiceMode}
         elevenLabsAvailable={elevenLabsAvailable}
         isDemoRunning={isDemoRunning}
-        startDemo={startChoreographedDemo}
+        startDemo={startDemo}
         presentationMode={presentationMode}
         setPresentationMode={setPresentationMode}
-        startEyeTracking={startEyeTracking}
+        startEyeTracking={() => {
+          startEyeTracking();
+          setTrackingEnabled(true);
+        }}
         stopEyeTracking={stopEyeTracking}
+        trackingEnabled={trackingEnabled}
+        setTrackingEnabled={setTrackingEnabled}
       />
 
       <div className="flex min-h-0 flex-1 overflow-hidden px-4 pb-2 pt-4">
@@ -554,8 +510,8 @@ export default function PatientApp() {
               {/* Voice output + recent messages — pinned to bottom */}
               <div className="shrink-0">
                 <SpeechOutput
-                  sentence={generatedSentence}
-                  isGenerating={isGenerating}
+                  sentence={deferredSentence}
+                  isGenerating={deferredGenerating}
                   isSpeaking={isSpeaking}
                   source={sentenceSource}
                   selectedQuadrant={selectedQuadrant}
@@ -592,7 +548,7 @@ export default function PatientApp() {
               clinicalLog={clinicalLog}
               onGenerateReport={generateReport}
               onDownloadPDF={downloadPDF}
-              onTestWhatsApp={() => sendWhatsAppAlert(`NAYANA TEST\nSystem working correctly\nTime: ${new Date().toLocaleTimeString('en-IN')}`)}
+              onTestWhatsApp={handleWhatsAppTest}
               onRunRiskAssessment={clinicalAI.runRiskAssessment}
               presentationMode={presentationMode}
               setPresentationMode={setPresentationMode}
@@ -602,7 +558,11 @@ export default function PatientApp() {
       </div>
 
       {!presentationMode ? <BottomBar isDemoRunning={isDemoRunning} /> : null}
-      {!presentationMode ? <GazeEngine faceDetected={faceDetected} onGazeUpdate={handleIrisUpdate} /> : null}
+      <GazeEngine 
+        faceDetected={faceDetected} 
+        onGazeUpdate={handleIrisUpdate} 
+        isEnabled={trackingEnabled}
+      />
 
       <CalibrationScreen open={trackingMode === 'eye' && !isCalibrated} onSkip={() => setTrackingMode('mouse')} />
 

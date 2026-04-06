@@ -1,10 +1,11 @@
+import { memo } from 'react';
 import PropTypes from 'prop-types';
 import { FileDown, MessagesSquare, Presentation, ShieldCheck, Siren } from 'lucide-react';
 import RiskPanel from '../Clinical/RiskPanel';
 import SymptomTimeline from '../Clinical/SymptomTimeline';
 import CaregiverLog from '../Clinical/CaregiverLog';
 
-export default function RightPanel({
+const RightPanel = memo(function RightPanel({
   riskScore,
   riskLevel,
   riskReasoning,
@@ -89,7 +90,9 @@ export default function RightPanel({
       </div>
     </div>
   );
-}
+});
+
+export default RightPanel;
 
 RightPanel.propTypes = {
   riskScore: PropTypes.number.isRequired,
