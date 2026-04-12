@@ -1,18 +1,18 @@
 {
   "status": "commited",
-  "type": "backend",
+  "type": "frontend",
   "scope": "codebase",
   "localEndpoint": "http://localhost:5173",
-  "backendAuthType": "public",
   "executionArgs": {
     "projectName": "Nayana_codex",
     "projectPath": "c:\\Users\\Sharon\\OneDrive\\Desktop\\Nayana_codex",
     "testIds": [],
-    "additionalInstruction": "Focus on identifying network errors (specifically Gemini 429 Quota Exceeded) and GazeCloud tracking fallback/initialization issues. Identify any React console warnings that remain.",
-    "serverMode": "development",
+    "additionalInstruction": "Perform a definitive end-to-end clinical audit of all 31 phases. Focus on: Gaze Stability (60FPS), Predictive Intelligence accuracy (Gemini interaction), Sentinel Deterioration alerts, Multi-Regional Keyboard rendering (Hindi/Kannada), and the Family Portal 'Digital Hug' feedback loop. Generate a clinical-grade verification report.",
+    "serverMode": "production",
     "envs": {
       "API_KEY": "sk-user-rvbHVQlxnCS7aFgtpJUCv1avR2WF16k9JD1nP_fZoxMExyYu2-f6L-HoJfusTIcp3vNOsOQCyIF3PM7_Ij7rA07UbeZm4GMqXY4uJIxeZy4q6BoH8c7f3nYK329eHFSmRC0"
     }
   },
-  "serverPort": 58059
+  "serverPort": 53847,
+  "proxy": "http://4dc3267b-0ebc-4b1f-a7d8-a6298ae3b3e9:WUdXORDmyIogGlwvOhA6Sedm8EiK5zmf@tun.testsprite.com:8080"
 }

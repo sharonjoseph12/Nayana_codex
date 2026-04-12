@@ -1,6 +1,4 @@
-const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY || 'PASTE_YOUR_KEY_HERE';
 const ELEVENLABS_VOICE_ID = 'EXAVITQu4vr4xnSDxMaL';
-const ELEVENLABS_URL = `https://api.elevenlabs.io/v1/text-to-speech/${ELEVENLABS_VOICE_ID}`;
 
 const LANG_VOICE_IDS = {
   en: 'EXAVITQu4vr4xnSDxMaL',
@@ -33,6 +31,8 @@ export default async (req, res) => {
   if (!text) {
     return res.status(400).json({ error: 'Text is required' });
   }
+
+  const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY || 'PASTE_YOUR_KEY_HERE';
 
   if (ELEVENLABS_API_KEY === 'PASTE_YOUR_KEY_HERE') {
     return res.status(500).json({ error: 'ELEVENLABS_API_KEY is not configured on the server' });

@@ -19,7 +19,7 @@ export default function SOSAnchor({ onTrigger, dwellingOn = null, dwellProgress 
       tabIndex={0}
       aria-label="Emergency SOS — gaze for 2 seconds"
       title="Gaze here for 2 seconds to trigger SOS"
-      onClick={onTrigger}
+      onClick={() => onTrigger()}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onTrigger(); } }}
       className="fixed bottom-5 right-5 z-50 flex cursor-pointer flex-col items-center justify-center select-none"
       style={{ touchAction: 'none' }}

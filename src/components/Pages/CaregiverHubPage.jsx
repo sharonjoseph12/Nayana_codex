@@ -1,308 +1,136 @@
 import { useEffect, useRef, useState } from 'react';
 import PropTypes from 'prop-types';
+import { LayoutGrid, AlertCircle, LogOut, Search, UserCheck, ShieldAlert, Lock, Unlock, TrendingUp, Activity, WifiOff, Sparkles, Heart, Map as MapIcon, ChevronRight, User } from 'lucide-react';
 import { PATIENT } from '../../constants/config';
 import { sendWhatsAppAlert } from '../../services/whatsapp';
+import BedsideCard from '../Clinical/BedsideCard';
+import VitalsTrendChart from '../Clinical/VitalsTrendChart';
+import HandoverReportView from '../Clinical/HandoverReportView';
+import SentimentTimeline from '../Clinical/SentimentTimeline';
+import WardHeatmap from '../Clinical/WardHeatmap';
+import WardTriageWidget from '../Clinical/WardTriageWidget';
 
-function getRiskColor(score) {
-  if (score > 70) return '#ff3d5a';
-  if (score > 40) return '#ffd700';
-  return '#00ffaa';
-}
+// Phase 21-26: Clinical Intelligence, Ward Strategy & Psychological Well-being
+import { cloudSync } from '../../services/cloudSync';
+
+const MOCK_PATIENTS = {
+  'icu-7': { id: 'icu-7', name: 'Arjun Mehta', condition: 'ALS Stage 2', room: 'ICU-7', caregiver: 'Dr. Priya' },
+  'icu-4': { id: 'icu-4', name: 'Suhail Khan', condition: 'Post-Op Recovery', room: 'ICU-4', caregiver: 'Dr. Priya' },
+  'icu-12': { id: 'icu-12', name: 'Nita Rai', condition: 'Acute Respiratory', room: 'ICU-12', caregiver: 'Dr. Priya' },
+};
 
 export default function CaregiverHubPage({
-  caregiverLog,
-  setCaregiverLog,
-  clinicalLog,
-  vitals,
-  clinicalAI,
-  showToast,
-  speak,
-  currentLanguage,
-  onAddCaregiverEntry,
-  lastInteractionAt,
-  onSendResponse,
-  patientInfoOverride,
+  caregiverLog, setCaregiverLog, clinicalLog, vitals, clinicalAI, showToast, speak, currentLanguage, onAddCaregiverEntry, lastInteractionAt, onSendResponse, patientInfoOverride,
 }) {
+  const [view, setView] = useState('grid');
+  const [selectedPatientId, setSelectedPatientId] = useState('icu-7');
   const [responseText, setResponseText] = useState('');
-  const [reminderTime, setReminderTime] = useState('');
-  const [roundLog, setRoundLog] = useState([]);
-  const reminderRef = useRef([]);
+  const [hardwareAlerts, setHardwareAlerts] = useState({});
+  const [isLocked, setIsLocked] = useState(true);
+  const [pin, setPin] = useState('');
+  
+  const [bedsideStatus, setBedsideStatus] = useState({}); 
+  const [bedsidePredictions, setBedsidePredictions] = useState({}); 
+  const [bedsideSentiments, setBedsideSentiments] = useState({}); 
+  const [bedsideWellbeing, setBedsideWellbeing] = useState({}); // { [roomId]: score }
 
-  useEffect(
-    () => () => {
-      reminderRef.current.forEach((timer) => window.clearTimeout(timer));
-    },
-    []
-  );
-
-  const lastCommunication = clinicalLog[clinicalLog.length - 1];
-  const lastActiveMinutes = Math.max(0, Math.floor((Date.now() - lastInteractionAt) / 60000));
-  const isCommunicating = Date.now() - lastInteractionAt < 2 * 60 * 1000;
-  const unreadCount = caregiverLog.filter((entry) => !entry.acknowledged).length;
-
-  const sendResponseToPatient = () => {
-    if (!responseText.trim()) return;
-
-    if (onSendResponse) {
-      onSendResponse(responseText.trim());
-    } else {
-      const channel = new BroadcastChannel('nayana_comms');
-      channel.postMessage({ 
-        type: 'CAREGIVER_RESPONSE', 
-        text: responseText.trim(),
-        tabId: typeof window !== 'undefined' ? window.__nayana_tab_id : 'unknown'
-      });
-      channel.close();
-    }
-    
-    showToast(`Response sent to patient: "${responseText.trim()}"`, 'success');
-    onAddCaregiverEntry('Caregiver', `Response sent: "${responseText.trim()}"`, '#00ffaa', {
-      acknowledged: true,
-      sentence: responseText.trim(),
-      phrase: 'Caregiver Response',
+  useEffect(() => {
+    const unsubscribe = cloudSync.subscribe((data) => {
+      const rId = data.roomId || data.patient?.room || 'icu-7';
+      if (data?.type === 'HEARTBEAT' || data?.type === 'SYNC_STATE' || data?.type === 'PHRASE_SELECTED') {
+        setBedsideStatus(prev => ({ ...prev, [rId]: { lastSeen: Date.now() } }));
+      }
+      if (data?.type === 'SYNC_STATE') {
+        if (data.sentiment) setBedsideSentiments(prev => ({ ...prev, [rId]: data.sentiment }));
+        if (data.wellbeingScore !== undefined) setBedsideWellbeing(prev => ({ ...prev, [rId]: data.wellbeingScore }));
+      }
+      if (data?.type === 'AI_PREDICTIONS') {
+        setBedsidePredictions(prev => ({ ...prev, [rId]: data.suggestions }));
+      }
+      if (data?.type === 'HARDWARE_HEALTH') {
+        setHardwareAlerts(prev => ({ ...prev, [data.patientId || 'icu-7']: { status: data.status, message: data.message } }));
+      }
     });
-    setResponseText('');
+    const watchdogInterval = setInterval(() => { setBedsideStatus(prev => ({ ...prev })); }, 5000);
+    return () => { unsubscribe(); clearInterval(watchdogInterval); };
+  }, []);
+
+  const handlePinSubmit = () => {
+    if (pin === '1234') { setIsLocked(false); showToast('Terminal Unlocked', 'success'); }
+    else { setPin(''); showToast('Access Denied', 'warning'); }
   };
 
-  const scheduleReminder = () => {
-    if (!reminderTime) {
-      showToast('Choose a reminder time first', 'warning');
-      return;
-    }
+  if (isLocked) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center p-6 text-center">
+        <div className="mb-8 flex h-20 w-20 items-center justify-center rounded-3xl bg-white/[0.03] border border-white/10 text-white/20"><ShieldAlert size={40} /></div>
+        <h1 className="font-display text-4xl font-bold text-white mb-2">Nursing Station Locked</h1>
+        <div className="flex flex-col gap-4 w-64 mt-8">
+          <input type="password" value={pin} onChange={e => setPin(e.target.value)} placeholder="••••" className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 text-center text-3xl tracking-[1em] focus:outline-none focus:border-medical" onKeyDown={e => e.key === 'Enter' && handlePinSubmit()}/>
+          <button onClick={handlePinSubmit} className="w-full bg-medical py-4 rounded-2xl text-black font-bold">UNLOCK</button>
+        </div>
+      </div>
+    );
+  }
 
-    const now = new Date();
-    const [hours, minutes] = reminderTime.split(':');
-    const target = new Date();
-    target.setHours(Number.parseInt(hours, 10), Number.parseInt(minutes, 10), 0, 0);
-    const delay = target.getTime() - now.getTime();
-
-    if (delay <= 0) {
-      showToast('Reminder time must be later today', 'warning');
-      return;
-    }
-
-    const timer = window.setTimeout(() => {
-      showToast('Medication reminder: Time for scheduled medication', 'warning');
-      speak('Medication reminder. It is time for the scheduled medication.', currentLanguage);
-      onAddCaregiverEntry('Medical', `Medication reminder triggered at ${reminderTime}`, '#ffd700', {
-        acknowledged: false,
-        sentence: `Medication reminder triggered at ${reminderTime}`,
-        phrase: 'Medication Reminder',
-      });
-    }, delay);
-
-    reminderRef.current.push(timer);
-    showToast(`Reminder set for ${reminderTime}`, 'success');
-  };
-
-  const markRoundComplete = () => {
-    const message = `Round completed at ${new Date().toLocaleTimeString('en-IN', {
-      hour: '2-digit',
-      minute: '2-digit',
-    })}`;
-    setRoundLog((previous) => [...previous, message]);
-    onAddCaregiverEntry('Clinical', message, '#00ffaa', {
-      acknowledged: true,
-      sentence: message,
-      phrase: 'Round Complete',
-    });
-    showToast('Nurse round logged', 'success');
-  };
+  const patientData = patientInfoOverride || PATIENT;
 
   return (
-    <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-      <div>
-        <h1 style={{ fontFamily: 'Syne, sans-serif', fontSize: '22px', fontWeight: '600', color: '#fff' }}>
-          Caregiver Hub
-        </h1>
-        <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.35)', fontFamily: 'DM Mono, monospace', marginTop: '4px' }}>
-          Live patient monitoring and caregiver coordination
-        </p>
-      </div>
-
-      <div style={{ background: '#151515', border: '1px solid #222', borderRadius: '14px', padding: '20px' }}>
-        <div style={{ fontSize: '11px', fontWeight: '700', letterSpacing: '0.1em', color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', marginBottom: '14px' }}>
-          Live Patient Status
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
-          <div style={{ width: '52px', height: '52px', borderRadius: '50%', background: 'linear-gradient(135deg,#00d4ff,#bf80ff)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px', fontWeight: '700', color: '#000' }}>
-            AM
-          </div>
-          <div>
-            <div style={{ fontSize: '18px', fontWeight: '600', color: '#fff', fontFamily: 'Syne, sans-serif' }}>
-              {(patientInfoOverride || PATIENT).name}
-            </div>
-            <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.4)', marginTop: '2px' }}>
-              {(patientInfoOverride || PATIENT).condition} - {(patientInfoOverride || PATIENT).room} - Caregiver: {(patientInfoOverride || PATIENT).caregiver}
-            </div>
-            <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.35)', marginTop: '5px' }}>
-              Last communication:{' '}
-              {lastCommunication
-                ? new Date(lastCommunication.timestamp).toLocaleTimeString('en-IN', {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })
-                : 'No session activity yet'}
-            </div>
-          </div>
-          <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
-            <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.3)', fontFamily: 'DM Mono, monospace' }}>RISK SCORE</div>
-            <div style={{ fontSize: '32px', fontWeight: '700', fontFamily: 'DM Mono, monospace', color: getRiskColor(clinicalAI.riskScore) }}>
-              {clinicalAI.riskScore}
-            </div>
-            <div style={{ fontSize: '11px', fontWeight: '600', color: getRiskColor(clinicalAI.riskScore) }}>
-              {clinicalAI.riskLevel}
-            </div>
-          </div>
-        </div>
-
-        <div style={{ marginTop: '14px', fontSize: '12px', color: isCommunicating ? '#00ffaa' : '#ffd700' }}>
-          {isCommunicating
-            ? 'Patient is communicating'
-            : `Patient is silent - last active ${lastActiveMinutes} minute${lastActiveMinutes === 1 ? '' : 's'} ago`}
-        </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '8px', marginTop: '16px' }}>
-          {[
-            { label: 'Heart Rate', value: `${vitals.heartRate} BPM`, color: '#00d4ff' },
-            { label: 'Blink Rate', value: `${vitals.blinkRate}/min`, color: '#00ffaa' },
-            { label: 'Focus', value: `${vitals.focusScore}%`, color: '#bf80ff' },
-            { label: 'Stress', value: vitals.stressLevel, color: '#ffd700' },
-          ].map((item) => (
-            <div key={item.label} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', padding: '10px' }}>
-              <div style={{ fontSize: '16px', fontWeight: '600', color: item.color, fontFamily: 'DM Mono, monospace' }}>{item.value}</div>
-              <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginTop: '2px' }}>{item.label}</div>
-            </div>
-          ))}
+    <div className={`flex flex-col gap-6 p-6 animate-fade-in h-screen overflow-y-auto`}>
+      <div className="flex items-center justify-between shrink-0">
+        <div><h1 className="font-display text-4xl font-bold text-white">Nursing Station</h1><p className="mt-1 font-mono text-xs uppercase tracking-[0.2em] text-white/30">ICU Ward Floor A • Tactical Command</p></div>
+        <div className="flex items-center gap-4">
+           <div className="flex bg-white/5 border border-white/10 rounded-2xl p-1">
+              <button onClick={() => setView('grid')} className={`flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all ${view === 'grid' ? 'bg-medical text-black shadow-glow-sm' : 'text-white/40 hover:text-white'}`}><LayoutGrid size={14} /> Grid</button>
+              <button onClick={() => setView('map')} className={`flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all ${view === 'map' ? 'bg-medical text-black shadow-glow-sm' : 'text-white/40 hover:text-white'}`}><MapIcon size={14} /> Map</button>
+           </div>
+           <button onClick={() => setIsLocked(true)} className="p-3 bg-white/5 border border-white/10 rounded-2xl text-white/40"><Lock size={18} /></button>
         </div>
       </div>
 
-      <div style={{ background: '#151515', border: '1px solid #222', borderRadius: '14px', padding: '20px' }}>
-        <div style={{ fontSize: '11px', fontWeight: '700', letterSpacing: '0.1em', color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', marginBottom: '14px' }}>
-          Communication Feed - {unreadCount} unread
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '300px', overflowY: 'auto' }}>
-          {caregiverLog.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '24px', color: 'rgba(255,255,255,0.2)', fontSize: '13px' }}>No communications yet</div>
-          ) : (
-            caregiverLog.map((entry) => (
-              <div
-                key={entry.id}
-                style={{
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  gap: '10px',
-                  padding: '10px 12px',
-                  background: entry.acknowledged ? 'rgba(0,255,170,0.04)' : 'rgba(0,212,255,0.04)',
-                  border: `1px solid ${entry.acknowledged ? 'rgba(0,255,170,0.16)' : 'rgba(0,212,255,0.15)'}`,
-                  borderLeft: `3px solid ${entry.color}`,
-                  borderRadius: '8px',
-                }}
-              >
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                    <span style={{ padding: '2px 8px', borderRadius: '100px', border: `1px solid ${entry.color}55`, color: entry.color, fontSize: '9px', fontFamily: 'DM Mono, monospace' }}>
-                      {entry.quadrant}
-                    </span>
-                    {entry.phrase ? <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.3)', fontFamily: 'DM Mono, monospace' }}>{entry.phrase}</span> : null}
-                    <span style={{ marginLeft: 'auto', fontSize: '10px', color: 'rgba(255,255,255,0.25)', fontFamily: 'DM Mono, monospace' }}>{entry.time}</span>
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr,320px] flex-1 min-h-0">
+         <div className="flex flex-col gap-6 min-h-0">
+            {(view === 'grid' || view === 'detail') && (
+              <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                <div className="flex flex-col gap-4">
+                  <div className="relative">
+                     <BedsideCard patient={patientData} vitals={vitals} clinicalAI={clinicalAI} lastInteractionAt={lastInteractionAt} isCommunicating={Date.now() - lastInteractionAt < 120000} isOffline={Date.now() - (bedsideStatus[patientData.room]?.lastSeen || 0) > 20000} predictions={bedsidePredictions[patientData.room]} onOpenDetails={() => { setView('detail'); setSelectedPatientId('icu-7'); }}/>
+                     {bedsideWellbeing[patientData.room] !== undefined && (
+                        <div className="absolute top-4 left-4 flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500 shadow-glow-sm">
+                           <Heart size={10} className="text-black animate-pulse" />
+                           <span className="text-[10px] font-black text-black">{bedsideWellbeing[patientData.room]}%</span>
+                        </div>
+                     )}
                   </div>
-                  <div style={{ fontSize: '12px', color: entry.acknowledged ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.85)', fontWeight: entry.acknowledged ? '400' : '500', marginTop: '8px' }}>
-                    {entry.sentence || entry.message}
-                  </div>
+                  {bedsideSentiments[patientData.room] && <div className="panel-elevated p-5"><SentimentTimeline history={bedsideSentiments[patientData.room].history} /></div>}
                 </div>
-                <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
-                  {!entry.acknowledged ? (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setCaregiverLog((previous) =>
-                          previous.map((item) => (item.id === entry.id ? { ...item, acknowledged: true } : item))
-                        )
-                      }
-                      style={{ padding: '3px 8px', borderRadius: '100px', border: '1px solid rgba(0,212,255,0.3)', background: 'rgba(0,212,255,0.08)', color: '#00d4ff', fontSize: '9px', fontFamily: 'DM Mono, monospace', cursor: 'pointer' }}
-                    >
-                      ACK
-                    </button>
-                  ) : null}
-                  <button
-                    type="button"
-                    onClick={() => sendWhatsAppAlert(`Patient comm: ${entry.sentence || entry.message} - ${entry.time}`)}
-                    style={{ padding: '3px 8px', borderRadius: '100px', border: '1px solid rgba(37,211,102,0.3)', background: 'rgba(37,211,102,0.08)', color: '#25d366', fontSize: '9px', fontFamily: 'DM Mono, monospace', cursor: 'pointer' }}
-                  >
-                    WA
-                  </button>
-                </div>
+                {Object.values(MOCK_PATIENTS).filter(p => p.id !== 'icu-7').map(p => (
+                  <BedsideCard key={p.id} patient={p} vitals={{ heartRate: 72, stressLevel: 'Low' }} clinicalAI={{ riskLevel: 'Stable' }} lastInteractionAt={Date.now() - 300000} isCommunicating={false} isOffline={false} onOpenDetails={() => {}} />
+                ))}
               </div>
-            ))
-          )}
-        </div>
-      </div>
+            )}
+            
+            {view === 'map' && <WardHeatmap bedsideSentiments={bedsideSentiments} onSelectBed={(id) => { if(id === 'icu-7') { setView('detail'); setSelectedPatientId(id); } }} />}
+         </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-        <div style={{ background: '#151515', border: '1px solid #222', borderRadius: '14px', padding: '20px' }}>
-          <div style={{ fontSize: '11px', fontWeight: '700', letterSpacing: '0.1em', color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', marginBottom: '12px' }}>
-            Send Response to Patient
-          </div>
-          <input
-            value={responseText}
-            onChange={(event) => setResponseText(event.target.value)}
-            placeholder="Type message for patient to read..."
-            style={{ width: '100%', padding: '9px 12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#fff', fontFamily: 'DM Sans, sans-serif', fontSize: '13px', outline: 'none', marginBottom: '8px' }}
-          />
-          <button
-            type="button"
-            onClick={sendResponseToPatient}
-            style={{ width: '100%', padding: '9px', borderRadius: '9px', border: '1px solid rgba(0,212,255,0.3)', background: 'rgba(0,212,255,0.1)', color: '#00d4ff', fontFamily: 'DM Sans, sans-serif', fontSize: '13px', cursor: 'pointer' }}
-          >
-            Send to Patient Screen
-          </button>
-        </div>
-
-        <div style={{ background: '#151515', border: '1px solid #222', borderRadius: '14px', padding: '20px' }}>
-          <div style={{ fontSize: '11px', fontWeight: '700', letterSpacing: '0.1em', color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', marginBottom: '12px' }}>
-            Schedule Medication Reminder
-          </div>
-          <input
-            type="time"
-            value={reminderTime}
-            onChange={(event) => setReminderTime(event.target.value)}
-            style={{ width: '100%', padding: '9px 12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#fff', fontFamily: 'DM Mono, monospace', fontSize: '13px', outline: 'none', marginBottom: '8px' }}
-          />
-          <button
-            type="button"
-            onClick={scheduleReminder}
-            style={{ width: '100%', padding: '9px', borderRadius: '9px', border: '1px solid rgba(255,215,0,0.3)', background: 'rgba(255,215,0,0.08)', color: '#ffd700', fontFamily: 'DM Sans, sans-serif', fontSize: '13px', cursor: 'pointer' }}
-          >
-            Set Reminder
-          </button>
-          <button
-            type="button"
-            onClick={markRoundComplete}
-            style={{ width: '100%', padding: '9px', borderRadius: '9px', border: '1px solid rgba(0,255,170,0.3)', background: 'rgba(0,255,170,0.08)', color: '#00ffaa', fontFamily: 'DM Sans, sans-serif', fontSize: '13px', cursor: 'pointer', marginTop: '6px' }}
-          >
-            Mark Round Complete
-          </button>
-          {roundLog.slice(-3).map((entry, index) => (
-            <div key={`${entry}-${index}`} style={{ fontSize: '10px', color: 'rgba(255,255,255,0.3)', fontFamily: 'DM Mono, monospace', marginTop: '4px' }}>
-              OK {entry}
-            </div>
-          ))}
-        </div>
+         <div className="flex flex-col gap-6 shrink-0">
+            <WardTriageWidget bedsideSentiments={bedsideSentiments} patients={{ 'icu-7': patientData, ...MOCK_PATIENTS }} />
+            {view === 'detail' && (
+               <div className="bg-[#121212] border border-white/5 rounded-[32px] p-6">
+                  <h3 className="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-4">Psychological Pulse</h3>
+                  <div className="flex items-center gap-4 mb-6">
+                     <div className="p-3 rounded-2xl bg-amber-500/10 text-amber-500"><Heart size={20} /></div>
+                     <div>
+                        <div className="text-xl font-bold text-white">{bedsideWellbeing[patientData.room] || 100}%</div>
+                        <div className="text-[10px] text-white/20 uppercase font-mono">Dignity Engagement Score</div>
+                     </div>
+                  </div>
+                  <HandoverReportView clinicalLog={clinicalLog} vitals={vitals} clinicalAI={clinicalAI} />
+               </div>
+            )}
+         </div>
       </div>
     </div>
   );
 }
-
-CaregiverHubPage.propTypes = {
-  caregiverLog: PropTypes.arrayOf(PropTypes.object).isRequired,
-  setCaregiverLog: PropTypes.func.isRequired,
-  clinicalLog: PropTypes.arrayOf(PropTypes.object).isRequired,
-  vitals: PropTypes.object.isRequired,
-  clinicalAI: PropTypes.object.isRequired,
-  showToast: PropTypes.func.isRequired,
-  speak: PropTypes.func.isRequired,
-  currentLanguage: PropTypes.string.isRequired,
-  onAddCaregiverEntry: PropTypes.func.isRequired,
-  lastInteractionAt: PropTypes.number.isRequired,
-};
+CaregiverHubPage.propTypes = { caregiverLog: PropTypes.array, clinicalLog: PropTypes.array, vitals: PropTypes.object, clinicalAI: PropTypes.object, showToast: PropTypes.func, speak: PropTypes.func, currentLanguage: PropTypes.string, onAddCaregiverEntry: PropTypes.func, lastInteractionAt: PropTypes.number };

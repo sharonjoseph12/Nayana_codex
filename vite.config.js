@@ -5,17 +5,15 @@ function vercelApiBridge(mode) {
   return {
     name: 'vercel-api-bridge',
     configureServer(server) {
-      const env = loadEnv(mode, process.cwd(), '');
-      Object.entries(env).forEach(([key, value]) => {
-        if (!(key in process.env)) {
-          process.env[key] = value;
-        }
-      });
-
       server.middlewares.use(async (req, res, next) => {
         if (!req.url || !req.url.startsWith('/api/')) {
           return next();
         }
+
+        // Phase 40: Re-load .env for EVERY API request in development
+        // This ensures rotated keys (Gemini/ElevenLabs) are active INSTANTLY.
+        const currentEnv = loadEnv(mode, process.cwd(), '');
+        Object.assign(process.env, currentEnv);
 
         const endpointNames = {
           '/api/send-alert': './api/send-alert.js',

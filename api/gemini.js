@@ -1,4 +1,4 @@
-const GEMINI_MODEL = 'gemini-2.5-flash';
+const GEMINI_MODEL = 'gemini-1.5-flash';
 
 function extractText(data) {
   return data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';

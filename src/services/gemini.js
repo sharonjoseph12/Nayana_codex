@@ -14,23 +14,121 @@ const LANG_INSTRUCTIONS = {
   ta: 'CRITICAL: You MUST generate the entire sentence in Tamil (தமிழ்) using Tamil script. DO NOT use any English words or Latin characters. Every single word must be in Tamil script.',
 };
 
-async function callGeminiProxy(prompt, generationConfig, systemInstruction) {
-  const response = await fetch('/api/gemini', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      prompt,
-      generationConfig,
-      systemInstruction,
-    }),
-  });
-
-  if (!response.ok) {
-    const payload = await response.json().catch(() => ({}));
-    throw new Error(payload.error || `Gemini proxy error ${response.status}`);
+/**
+ * Robust JSON Extractor (Phase 36)
+ * Finds the first JSON block {...} or [...] in a string.
+ */
+function safelyParseJSON(text, fallback = []) {
+  if (!text) return fallback;
+  try {
+    // Try direct parse first
+    return JSON.parse(text);
+  } catch (e1) {
+    try {
+      // Find JSON block using regex
+      const jsonMatch = text.match(/\[[\s\S]*\]|\{[\s\S]*\}/);
+      if (jsonMatch) {
+         // Remove markdown artifacts
+         const cleaned = jsonMatch[0].replace(/```json|```/g, '').trim();
+         return JSON.parse(cleaned);
+      }
+    } catch (e2) {
+      console.warn('Nayana: AI JSON extraction failed', text.slice(0, 100));
+    }
+    return fallback;
   }
+}
 
-  return response.json();
+async function callGeminiProxy(prompt, generationConfig, systemInstruction) {
+  try {
+    const response = await fetch('/api/gemini', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        prompt,
+        generationConfig,
+        systemInstruction,
+      }),
+    });
+
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      const errorMsg = payload.error || `Gemini proxy error ${response.status}`;
+      
+      // Phase 36: Propagate Quota specific error for fallback triggering
+      if (response.status === 429 || errorMsg.includes('Quota')) {
+         throw new Error('QUOTA_EXCEEDED');
+      }
+      throw new Error(errorMsg);
+    }
+
+    return response.json();
+  } catch (error) {
+    throw error;
+  }
+}
+
+/**
+ * Phase 22 & 36: Predictive AI engine to anticipate patient needs.
+ */
+export async function predictNextNeeds(clinicalLog, vitals, language = 'en') {
+  const logSummary = clinicalLog
+    .slice(-10)
+    .map(entry => `Patient said: ${entry.quadrant}->${entry.phrase}`)
+    .join('\n');
+
+  const hour = new Date().getHours();
+  const timeLabel = 
+    hour >= 6 && hour < 11 ? 'morning (breakfast/wash)' :
+    hour >= 11 && hour < 17 ? 'afternoon (rest/lunch)' :
+    hour >= 17 && hour < 22 ? 'evening (dinner/handover)' : 'late night (sleep/comfort)';
+
+  const prompt = `You are a predictive clinical AI. Anticipate the next 3 most likely phrases this paralyzed ICU patient will want to say.
+Patient: Arjun Mehta | ALS Stage 2
+Context:
+- Current Time: ${timeLabel}
+- Heart Rate: ${vitals.heartRate} BPM
+- Stress Level: ${vitals.stressLevel}
+- Recent Interactions:
+${logSummary || 'No recent communications.'}
+
+Respond ONLY with a JSON array of 3 objects:
+[
+  { "phrase": "e.g. Water", "quadrant": "Personal", "confidence": 0-100, "reason": "brief clinical reason" },
+  { "phrase": "e.g. Pain", "quadrant": "Medical", "confidence": 0-100, "reason": "brief clinical reason" },
+  { "phrase": "e.g. Family", "quadrant": "Social", "confidence": 0-100, "reason": "brief clinical reason" }
+]`;
+
+  try {
+    const data = await callGeminiProxy(prompt, {
+      temperature: 0.4,
+      maxOutputTokens: 250,
+    });
+
+    const results = safelyParseJSON(data.text, []);
+    return results.slice(0, 3);
+  } catch (error) {
+    if (error.message !== 'QUOTA_EXCEEDED') {
+      console.warn('Predictive AI Error:', error);
+    }
+    
+    // Conservative fallback based on time of day
+    if (hour >= 6 && hour < 11) return [
+      { phrase: 'Water', quadrant: 'Personal', confidence: 60, reason: 'Morning hydration' },
+      { phrase: 'Clean', quadrant: 'Personal', confidence: 50, reason: 'Morning wash' },
+      { phrase: 'Position', quadrant: 'Medical', confidence: 40, reason: 'Bed adjustment' }
+    ];
+    if (hour >= 22 || hour < 6) return [
+      { phrase: 'Lights', quadrant: 'Personal', confidence: 60, reason: 'Night cycle' },
+      { phrase: 'Noise', quadrant: 'Personal', confidence: 50, reason: 'Sleep comfort' },
+      { phrase: 'Turn', quadrant: 'Medical', confidence: 40, reason: 'Pressure relief' }
+    ];
+    return [
+      { phrase: 'Water', quadrant: 'Personal', confidence: 50, reason: 'Hydration' },
+      { phrase: 'Pain', quadrant: 'Medical', confidence: 40, reason: 'Symptom load' },
+      { phrase: 'Social', quadrant: 'Social', confidence: 30, reason: 'Boredom' }
+    ];
+  }
 }
 
 export async function generateSentence(
@@ -47,7 +145,6 @@ export async function generateSentence(
 
   const langName = LANG_NAMES[language] || 'English';
 
-  // Build environmental context string
   const hour = new Date().getHours();
   const timeLabel =
     hour >= 6 && hour < 11 ? 'morning' :
@@ -92,7 +189,9 @@ Output ONLY the sentence. No quotes. No explanation. No English if language is n
 
     return { text, source: 'gemini' };
   } catch (error) {
-    console.warn('Gemini fallback:', error.message);
+    if (error.message !== 'QUOTA_EXCEEDED') {
+      console.warn('Gemini fallback:', error.message);
+    }
     const key = `${quadrant}-${phrase}`;
     const fallbacks = FALLBACK_SENTENCES[key];
     const fallbackText = typeof fallbacks === 'object' && fallbacks !== null
@@ -128,7 +227,7 @@ Respond ONLY in JSON:
       maxOutputTokens: 150,
     });
 
-    return JSON.parse((data.text || '{}').replace(/```json|```/g, '').trim());
+    return safelyParseJSON(data.text, {});
   } catch {
     const score = Math.min(
       100,

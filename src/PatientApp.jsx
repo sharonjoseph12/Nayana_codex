@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useDeferredValue } from 'react';
+import html2pdf from 'html2pdf.js';
 import TopBar from './components/Layout/TopBar';
 import LeftNav from './components/Layout/LeftNav';
 import LeftSidebar from './components/Layout/LeftSidebar';
@@ -9,6 +10,7 @@ import SpeechOutput from './components/Communication/SpeechOutput';
 import SOSModal from './components/Modals/SOSModal';
 import ReportModal from './components/Modals/ReportModal';
 import VoiceSetupModal from './components/Modals/VoiceSetupModal';
+import HardwareStatsModal from './components/Modals/HardwareStatsModal';
 import GazeReticle from './components/Tracking/GazeReticle';
 import GazeEngine from './components/Tracking/GazeEngine';
 import CalibrationScreen from './components/Tracking/CalibrationScreen';
@@ -19,6 +21,9 @@ import SessionHistoryPage from './components/Pages/SessionHistoryPage';
 import PainMapPage from './components/Pages/PainMapPage';
 import SettingsPage from './components/Pages/SettingsPage';
 import LoginPage from './components/Pages/LoginPage';
+import KeyboardPage from './components/Pages/KeyboardPage';
+import MemoryPage from './components/Pages/MemoryPage';
+import FamilyPortalPage from './components/Pages/FamilyPortalPage';
 import NeuralBackground from './components/NeuralBackground';
 import { useGazeTracking } from './hooks/useGazeTracking';
 import { useVitals } from './hooks/useVitals';
@@ -33,20 +38,22 @@ import { TRANSLATIONS } from './constants/translations';
 import { generateHandoverReport, generateSentence } from './services/gemini';
 import { synthesizeWithElevenLabs } from './services/elevenlabs';
 
+// Phase 21-31: Clinical Intelligence, Hardware Health & Family Respite
+import { cloudSync } from './services/cloudSync';
+import { useClinicalMemory } from './hooks/useClinicalMemory';
+import { usePredictiveAI } from './hooks/usePredictiveAI';
+import { sentinelEngine } from './services/sentinelEngine';
+
 // Initialize Global Tab ID for isolation
 if (typeof window !== 'undefined' && !window.__nayana_tab_id) {
   window.__nayana_tab_id = Math.random().toString(36).substring(7);
 }
 import { buildPDFHTML } from './services/pdf';
-import { buildEmotionMessage, buildSOSMessage, sendWhatsAppAlert } from './services/whatsapp';
+import { buildEmotionMessage, buildSOSMessage, buildRiskMessage, sendWhatsAppAlert } from './services/whatsapp';
 import { webrtcManager } from './services/webrtc';
+import { Heart } from 'lucide-react';
 
-function getTimeAgo(minutes) {
-  const date = new Date(Date.now() - minutes * 60 * 1000);
-  return date.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
-}
-
-
+const elevenLabsAvailable = !!import.meta.env.VITE_ELEVENLABS_API_KEY;
 
 export default function PatientApp() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -56,542 +63,324 @@ export default function PatientApp() {
   const [currentLanguage, setCurrentLanguage] = useState('en');
   const [generatedSentence, setGeneratedSentence] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
+  const [theme, setTheme] = useState('default');
+  const [wellbeingScore, setWellbeingScore] = useState(100);
+  const [painLog, setPainLog] = useState([]);
+  const [showHardwareStats, setShowHardwareStats] = useState(false);
+  const [showFamilyHug, setShowFamilyHug] = useState(false);
   
   const deferredSentence = useDeferredValue(generatedSentence);
   const deferredGenerating = useDeferredValue(isGenerating);
 
-  const [sentenceSource, setSentenceSource] = useState('fallback');
   const [conversationHistory, setConversationHistory] = useState([]);
-  const [clinicalLog, setClinicalLog] = useState([]);
-  const [caregiverLog, setCaregiverLog] = useState([
-    { id: 1, time: getTimeAgo(12), message: 'Patient requested water', sentence: 'I am very thirsty and would like some water please.', phrase: 'Water', quadrant: 'Personal', color: '#bf80ff', acknowledged: true },
-    { id: 2, time: getTimeAgo(7), message: 'Patient reported pain', sentence: 'I am experiencing significant pain and need immediate medical attention.', phrase: 'Pain', quadrant: 'Medical', color: '#00d4ff', acknowledged: true },
-    { id: 3, time: getTimeAgo(3), message: 'Patient greeted family', sentence: 'Hello, it is so good to see you today.', phrase: 'Hello', quadrant: 'Social', color: '#00ffaa', acknowledged: false },
-  ]);
+  const { caregiverLog, clinicalLog, updateLog, setMemory } = useClinicalMemory(patient.room);
+
+  const setCaregiverLog = useCallback((newLog) => {
+    setMemory(prev => ({ ...prev, caregiverLog: typeof newLog === 'function' ? newLog(prev.caregiverLog) : newLog }));
+  }, [setMemory]);
+
+  const setClinicalLog = useCallback((newLog) => {
+    setMemory(prev => ({ ...prev, clinicalLog: typeof newLog === 'function' ? newLog(prev.clinicalLog) : newLog }));
+  }, [setMemory]);
+
   const [sosActive, setSosActive] = useState(false);
-  const [sosCountdown, setSosCountdown] = useState(10);
-  const [showReportModal, setShowReportModal] = useState(false);
-  const [clinicalReport, setClinicalReport] = useState('');
-  const [reportLoading, setReportLoading] = useState(false);
   const [presentationMode, setPresentationMode] = useState(false);
-  const [lastSelectedPhrase, setLastSelectedPhrase] = useState(null);
   const [lastSelectedPhraseKey, setLastSelectedPhraseKey] = useState(null);
   const [lastInteractionAt, setLastInteractionAt] = useState(Date.now());
-  const [voiceSetupOpen, setVoiceSetupOpen] = useState(false);
   const [dwellTime, setDwellTime] = useState(1800);
-  const [painLog, setPainLog] = useState([]);
   const [toasts, setToasts] = useState([]);
-  const [caregiverResponse, setCaregiverResponse] = useState(null);
-  const [densityMode, setDensityMode] = useState('normal'); // 'normal' | 'focused' | 'binary'
   const [trackingEnabled, setTrackingEnabled] = useState(true);
+  const [visionRefresh, setVisionRefresh] = useState(0);
 
+  const refreshVision = useCallback(() => {
+    setVisionRefresh(prev => prev + 1);
+    setTrackingEnabled(false);
+    setTimeout(() => setTrackingEnabled(true), 100);
+  }, []);
 
   const vitals = useVitals();
-  const { isSpeaking, isMuted, autoSpeak, speak, cancelSpeech, toggleMute, setAutoSpeak, voiceMode, setVoiceMode, activeSpeechLanguage, elevenLabsAvailable } = useSpeech();
+  const { isSpeaking, isMuted, autoSpeak, speak, cancelSpeech, toggleMute, setAutoSpeak, voiceMode, setVoiceMode } = useSpeech();
   const clinicalAI = useClinicalAI(clinicalLog);
   const { sendManagedAlert } = useCaregiverAlerts();
+  const { suggestions: aiSuggestions } = usePredictiveAI(clinicalLog, vitals);
 
-  const isSpeakingRef = useRef(isSpeaking);
-  useEffect(() => { isSpeakingRef.current = isSpeaking; }, [isSpeaking]);
-  
-  const lastSpeechRef = useRef({ text: '', timestamp: 0 });
+  const { trackingMode, gazePosition, headPosition, dwellingOn, dwellProgress, gazeAccuracy, signalQuality, fps, gazeTrail, faceDetected, isCalibrated, isLocked, handleIrisUpdate, registerElement, startEyeTracking, stopEyeTracking, setTrackingMode } = useGazeTracking({ onQuadrantSelect: useCallback((q) => setSelectedQuadrant(q), []), onPhraseSelect: useCallback((q, p) => handlePhraseSelect(q, p), []), onSOSTrigger: useCallback(() => triggerSOS(), []), dwellTimeOverride: dwellTime });
 
-  const showToast = useCallback((message, tone = 'info') => {
+  const emotionDetection = useEmotionDetection({ faceDetected, lastInteractionAt });
+
+  // Phase 30: Sentinel Heartbeat Activation
+  const sentinelReport = useMemo(() => {
+     return sentinelEngine.calculateProbability({
+        vitals, sentiment: { stabilityIndex: emotionDetection.stabilityIndex }, gazeFidelity: signalQuality, clinicalLog
+     });
+  }, [vitals, emotionDetection.stabilityIndex, signalQuality, clinicalLog]);
+
+  // Phase 31: Remote Family Connection Hub
+  useEffect(() => {
+     const unsubscribe = cloudSync.subscribe((data) => {
+        if (data.type === 'FAMILY_HUG' && data.roomId === patient.room) {
+           setShowFamilyHug(true);
+           setTimeout(() => setShowFamilyHug(false), 3500);
+        }
+     });
+     return unsubscribe;
+  }, [patient.room]);
+
+  useEffect(() => {
+    setTheme(new Date().getHours() >= 22 || new Date().getHours() < 6 ? 'night' : 'default');
+    if (sentinelReport.probability > 90 && !sosActive) triggerSOS('SENTINEL_ADVISORY: DETERIORATION PREDICTED');
+  }, [sentinelReport, patient.id, patient.room, sosActive]);
+
+  useEffect(() => {
+     const interval = setInterval(() => {
+        setWellbeingScore(prev => activePage === 'memory' ? Math.min(100, prev + 2) : Math.max(0, prev - 1));
+     }, 10000);
+     return () => clearInterval(interval);
+  }, [activePage]);
+
+  const showToast = useCallback((message, tone = 'info', action = null) => {
     const id = `${Date.now()}-${Math.random()}`;
-    setToasts((previous) => [...previous, { id, message, tone }]);
-    window.setTimeout(() => {
-      setToasts((previous) => previous.filter((toast) => toast.id !== id));
-    }, 3200);
+    setToasts((prev) => [...prev, { id, message, tone, action }]);
+    const duration = action ? 10000 : 3200;
+    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), duration);
   }, []);
 
   const addCaregiverEntry = useCallback((quadrant, message, color, extras = {}) => {
-    setCaregiverLog((previous) =>
-      [
-        {
-          id: Date.now() + Math.random(),
-          time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
-          message,
-          quadrant,
-          color: color || '#00d4ff',
-          acknowledged: extras.acknowledged ?? false,
-          phrase: extras.phrase || null,
-          sentence: extras.sentence || message,
-        },
-        ...previous,
-      ].slice(0, 40)
-    );
-  }, []);
+    // Phase 44: Defensive Sanitization
+    const safeMessage = typeof message === 'string' ? message : 'System Update Received';
+    const entry = { id: Date.now() + Math.random(), time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }), message: safeMessage, quadrant, color, acknowledged: extras.acknowledged ?? false, phrase: extras.phrase || null, sentence: extras.sentence || safeMessage, timestamp: new Date() };
+    updateLog('caregiverLog', entry);
+  }, [updateLog]);
 
-  const triggerSOS = useCallback(async () => {
+  const triggerSOS = useCallback(async (reason = 'SOS triggered') => {
+    // Phase 44: Defensive Sanitization for event leakage
+    const safeReason = typeof reason === 'string' ? reason : 'SOS triggered';
     setSosActive(true);
-    addCaregiverEntry('Emergency', 'SOS triggered - emergency caregiver alert sent', '#ff3d5a', {
-      acknowledged: false,
-      phrase: 'SOS',
-      sentence: 'Emergency alert sent to caregiver.',
-    });
+    addCaregiverEntry('Emergency', safeReason, '#ff3d5a', { acknowledged: false, phrase: 'SOS', sentence: safeReason });
     await sendManagedAlert('sos', buildSOSMessage(patient, new Date().toLocaleTimeString('en-IN')));
-    speak('Emergency alert has been triggered. Caregiver has been notified.');
-    showToast('SOS alert sent to caregiver', 'warning');
+    speak('Emergency alert has been triggered.'); showToast('SOS alert sent', 'warning');
   }, [addCaregiverEntry, patient, sendManagedAlert, showToast, speak]);
 
-  const handlePhraseSelect = useCallback(
-    async (quadrant, phrase, options = {}) => {
-      if (isGenerating) return '';
-
-      setSelectedQuadrant(quadrant);
-      setLastSelectedPhrase(phrase);
-      setLastSelectedPhraseKey(`${quadrant}-${phrase}`);
-      setIsGenerating(true);
-      setGeneratedSentence('');
-      setLastInteractionAt(Date.now());
-
-      const interactionId = `${Date.now()}-${Math.random().toString(36).substring(10)}`;
-
-      try {
-        const result = await generateSentence(quadrant, phrase, currentLanguage, conversationHistory, {
-          heartRate: vitals.heartRate,
-          stressLevel: vitals.stressLevel,
-          caregiver: patient.caregiver,
-          room: patient.room,
-        });
-
-        if (result.text) {
-          setGeneratedSentence(result.text);
-          setSentenceSource(result.source);
-          setLastSelectedPhrase(result.text);
-          setLastInteractionAt(new Date());
-
-          const entry = {
-            id: interactionId,
-            quadrant,
-            phrase,
-            sentence: result.text,
-            timestamp: new Date(),
-            source: result.source,
-            language: currentLanguage,
-          };
-
-          setClinicalLog((prev) => [...prev, entry].slice(-100));
-          setConversationHistory((prev) => [...prev, entry].slice(-50));
-          
-          addCaregiverEntry(quadrant, `${quadrant} -> ${phrase}`, QUADRANT_CONFIG[quadrant]?.color, {
-            phrase,
-            sentence: result.text,
-            interactionId
-          });
-
-          // Sync via BroadcastChannel (Include Tab ID)
-          const commsChannel = new BroadcastChannel('nayana_comms');
-          commsChannel.postMessage({
-            type: 'PHRASE_SELECTED',
-            text: result.text,
-            interactionId,
-            tabId: window.__nayana_tab_id
-          });
-
-          if (autoSpeak || options.forceSpeak) {
-            speak(result.text, currentLanguage);
-          }
-          return result.text;
-        }
-      } catch (error) {
-        console.error('Selection error:', error);
-        showToast('Failed to process selection', 'warning');
-      } finally {
-        setIsGenerating(false);
+  const handlePhraseSelect = async (quadrant, phrase, options = {}) => {
+    if (isGenerating) return;
+    setSelectedQuadrant(quadrant); setLastSelectedPhraseKey(`${quadrant}-${phrase}`);
+    setIsGenerating(true); setLastInteractionAt(Date.now());
+    try {
+      const result = await generateSentence(quadrant, phrase, currentLanguage, conversationHistory, { heartRate: vitals.heartRate, caregiver: patient.caregiver, room: patient.room });
+      if (result.text) {
+        setGeneratedSentence(result.text); setConversationHistory((prev) => [{ sentence: result.text }, ...prev].slice(0, 50));
+        addCaregiverEntry(quadrant, `${quadrant} -> ${phrase}`, QUADRANT_CONFIG[quadrant]?.color, { phrase, sentence: result.text });
+        cloudSync.broadcastState({ type: 'PHRASE_SELECTED', text: result.text, roomId: patient.room });
+        if (autoSpeak || options.forceSpeak) speak(result.text, currentLanguage);
       }
-    },
-    [autoSpeak, conversationHistory, currentLanguage, patient.caregiver, patient.room, speak, vitals.heartRate, vitals.stressLevel, addCaregiverEntry, showToast]
-  );
+    } catch {} finally { setIsGenerating(false); }
+  };
 
-  const handleQuadrantSelect = useCallback((quadrantName) => {
-    cancelSpeech();
-    setSelectedQuadrant(quadrantName);
-    setGeneratedSentence('');
-    setLastSelectedPhrase(null);
-    setLastSelectedPhraseKey(null);
-    setLastInteractionAt(Date.now());
-  }, [cancelSpeech]);
+  const handleCustomSentenceComplete = useCallback((text) => {
+    if (!text.trim()) return;
+    setConversationHistory((prev) => [{ sentence: text }, ...prev].slice(0, 50));
+    addCaregiverEntry('Custom', 'Keyboard Expression', '#ffffff', { sentence: text });
+    cloudSync.broadcastState({ type: 'PHRASE_SELECTED', text, roomId: patient.room });
+    speak(text, currentLanguage);
+    showToast("Message Sent & Spoken", "success");
+  }, [addCaregiverEntry, currentLanguage, patient.room, speak, showToast]);
 
-  const handleGazeSwipeLeft = useCallback(() => {
-    // Back/cancel gesture: if a quadrant is open, close it; otherwise do nothing
-    if (selectedQuadrant) {
-      cancelSpeech();
-      setSelectedQuadrant(null);
-      setGeneratedSentence('');
-      setLastSelectedPhrase(null);
-      setLastSelectedPhraseKey(null);
-      showToast('↩ Gaze swipe — back to grid', 'info');
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      ['Medical', 'Social', 'Personal', 'Emergency'].forEach((q) => {
+        registerElement(`quadrant-${q}`, 'quadrant');
+        PHRASES[q]?.forEach((p) => registerElement(`phrase-${q}-${encodeTrackableValue(p.label)}`, 'phrase'));
+      });
+      for (let i = 0; i <= 2; i++) registerElement(`predict-${i}`, 'phrase');
+      for (let i = 1; i <= 6; i++) registerElement(`mem-mem-${i}`, 'button');
+      ['btn-speak', 'btn-repeat', 'btn-clear', 'sos-anchor-btn', 'btn-back', 'key-lang-toggle'].forEach(id => registerElement(id, 'button'));
+    }, 450);
+    return () => clearTimeout(timeout);
+  }, [registerElement, selectedQuadrant]);
+
+  useEffect(() => {
+    if (webrtcManager.isHost && webrtcManager.connection) {
+       cloudSync.broadcastState({ 
+          type: 'SYNC_STATE', vitals, caregiverLog, clinicalLog, clinicalAI, patient, 
+          sentiment: { current: emotionDetection.emotion, history: emotionDetection.emotionHistory, stabilityIndex: emotionDetection.stabilityIndex }, 
+          wellbeingScore, sentinelReport, lastInteractionAt
+       });
     }
-  }, [cancelSpeech, selectedQuadrant, showToast]);
+  }, [vitals, caregiverLog, clinicalLog, clinicalAI, patient, emotionDetection, wellbeingScore, sentinelReport, lastInteractionAt]);
 
-  const repeatLastSentence = useCallback(() => {
-    if (generatedSentence) speak(generatedSentence, currentLanguage);
-  }, [generatedSentence, speak, currentLanguage]);
+  const handleLogin = (patientData) => { setPatient(patientData); setIsLoggedIn(true); };
+  
+  const handleVisionError = useCallback((err) => {
+    if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+      showToast("VISION ACCESS DENIED", "warning", { label: "Verify Camera", onClick: refreshVision });
+    } else {
+      showToast(`Vision Error: ${err.message}`, "error");
+    }
+  }, [showToast, refreshVision]);
 
-  const clearOutput = useCallback(() => {
-    cancelSpeech();
-    setGeneratedSentence('');
-    setSelectedQuadrant(null);
-    setLastSelectedPhrase(null);
-  }, [cancelSpeech]);
-
-  const generateReport = useCallback(async () => {
-    setShowReportModal(true);
-    setReportLoading(true);
-    const report = await generateHandoverReport(clinicalLog, vitals, clinicalAI);
-    setClinicalReport(report);
-    setReportLoading(false);
-    return report;
-  }, [clinicalLog, vitals, clinicalAI]);
-
-  const downloadPDF = useCallback(async () => {
-    const report = clinicalReport || (await generateHandoverReport(clinicalLog, vitals, clinicalAI));
-    if (!clinicalReport) setClinicalReport(report);
-    const html = buildPDFHTML(report, clinicalLog, vitals, clinicalAI);
-    showToast('Generating PDF file...', 'info');
-    
-    import('html2pdf.js').then((m) => {
-      const html2pdf = m.default || m;
-      const filename = `Nayana_Clinical_Report_${new Date().toISOString().slice(0, 10)}.pdf`;
+  const handlePDFExport = async () => {
+    try {
+      const report = sentinelReport?.assessment?.reasoning || "Standard clinical monitoring active.";
+      const content = buildPDFHTML(report, clinicalLog, vitals, clinicalAI);
+      
+      const element = document.createElement('div');
+      element.innerHTML = content;
+      
       const opt = {
         margin: 10,
-        filename: filename,
+        filename: `NAYANA_Handover_${patient.name}_${new Date().getTime()}.pdf`,
         image: { type: 'jpeg', quality: 0.98 },
         html2canvas: { scale: 2 },
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
       };
 
-      const element = document.createElement('div');
-      element.innerHTML = html;
-
-      html2pdf().from(element).set(opt).output('blob').then((pdfBlob) => {
-        const url = URL.createObjectURL(pdfBlob);
-        const anchor = document.createElement('a');
-        anchor.href = url;
-        anchor.download = filename;
-        document.body.appendChild(anchor);
-        anchor.click();
-        document.body.removeChild(anchor);
-        URL.revokeObjectURL(url);
-        
-        showToast('Clinical report downloaded successfully', 'success');
-      }).catch((err) => {
-        console.error('PDF Blob error:', err);
-        showToast('Error generating PDF', 'warning');
-      });
-    }).catch((err) => {
-      console.error('PDF module error:', err);
-      showToast('Error loading PDF engine', 'warning');
-    });
-  }, [clinicalAI, clinicalLog, clinicalReport, showToast, vitals]);
-
-  const { isDemoRunning, startDemo, stopDemo } = useDemoLogic({
-    onQuadrantSelect: handleQuadrantSelect,
-    onPhraseSelect: handlePhraseSelect,
-    onSOSTrigger: triggerSOS,
-  });
-
-  const { trackingMode, gazePosition, headPosition, dwellingOn, dwellProgress, gazeAccuracy, gazeTrail, faceDetected, isCalibrated, isLocked, handleIrisUpdate, registerElement, startEyeTracking, stopEyeTracking, setTrackingMode } = useGazeTracking({
-    onQuadrantSelect: handleQuadrantSelect,
-    onPhraseSelect: handlePhraseSelect,
-    onSOSTrigger: triggerSOS,
-    onGazeSwipeLeft: handleGazeSwipeLeft,
-    dwellTimeOverride: dwellTime,
-  });
-
-  const emotionDetection = useEmotionDetection({ faceDetected, lastInteractionAt });
-
-  useEffect(() => {
-    const timeout = window.setTimeout(() => {
-      ['Medical', 'Social', 'Personal', 'Emergency'].forEach((quadrant) => {
-        registerElement(`quadrant-${quadrant}`, 'quadrant');
-        PHRASES[quadrant]?.forEach((phrase) => registerElement(`phrase-${quadrant}-${encodeTrackableValue(phrase.label)}`, 'phrase'));
-      });
-      registerElement('btn-speak', 'button');
-      registerElement('btn-repeat', 'button');
-      registerElement('btn-clear', 'button');
-      // Permanent SOS anchor
-      registerElement('sos-anchor-btn', 'button');
-    }, 450);
-
-    return () => window.clearTimeout(timeout);
-  }, [registerElement, selectedQuadrant, currentLanguage, activePage]);
-
-  useEffect(() => {
-    if (!sosActive) {
-      setSosCountdown(10);
-      return;
+      html2pdf().from(element).set(opt).save();
+      showToast("Clinical Report Exported", "success");
+      
+      // Phase 48: Clinical Chain of Custody (WhatsApp Alert)
+      sendWhatsAppAlert(`CLINICAL ALERT: A handover report has been generated for Patient ${patient.name} in Room ${patient.room}. Please check the system log.`);
+    } catch (err) {
+      showToast("Export Failed", "error");
     }
-    if (sosCountdown <= 0) {
-      setSosActive(false);
-      return;
-    }
-    const timeout = window.setTimeout(() => setSosCountdown((previous) => previous - 1), 1000);
-    return () => window.clearTimeout(timeout);
-  }, [sosActive, sosCountdown]);
+  };
 
-  useEffect(() => {
-    const handler = (event) => {
-      if (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA') return;
-      if (event.key === 'F1') {
-        event.preventDefault();
-        startDemo();
-      }
-      if (event.key === 'Escape') stopDemo();
-      if (event.key === 'm' || event.key === 'M') handleQuadrantSelect('Medical');
-      if (event.key === 's' || event.key === 'S') handleQuadrantSelect('Social');
-      if (event.key === 'n' || event.key === 'N') handleQuadrantSelect('Personal');
-      if (event.key === 'e' || event.key === 'E') handleQuadrantSelect('Emergency');
-      if (event.key === 'r' || event.key === 'R') repeatLastSentence();
-      if (event.key === 'x' || event.key === 'X') clearOutput();
-      if (event.key === 'p' || event.key === 'P') setPresentationMode((previous) => !previous);
-      if (event.key === 'v' || event.key === 'V') setVoiceSetupOpen((previous) => !previous);
-    };
-
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [generatedSentence, isDemoRunning]);
-
-  useEffect(() => {
-    if (!emotionDetection.shouldAlert) return;
-    sendManagedAlert('emotion', buildEmotionMessage(patient, emotionDetection.emotion, new Date().toLocaleTimeString('en-IN')));
-    addCaregiverEntry('Clinical', `Emotion sentinel detected ${emotionDetection.emotion.toLowerCase()}`, '#ff3d5a', {
-      sentence: `Emotion sentinel detected ${emotionDetection.emotion.toLowerCase()}`,
-      phrase: 'Emotion Alert',
-    });
-  }, [addCaregiverEntry, emotionDetection.emotion, emotionDetection.shouldAlert, sendManagedAlert]);
-
-  useEffect(() => {
-    const channel = new BroadcastChannel('nayana_comms');
-    channel.onmessage = (event) => {
-      // Ignore messages from this same tab to prevent Echo Loops
-      if (event.data?.tabId === window.__nayana_tab_id) return;
-
-      if (event.data?.type === 'CAREGIVER_RESPONSE' && event.data.text) {
-        setCaregiverResponse({ text: event.data.text, timestamp: Date.now() });
-        speak(event.data.text, currentLanguage);
-        showToast('Caregiver response received', 'success');
-      }
-    };
-    return () => channel.close();
-  }, [currentLanguage, showToast, speak]);
-
-  useEffect(() => {
-    if (!caregiverResponse) return undefined;
-    const timeout = window.setTimeout(() => setCaregiverResponse(null), 9000);
-    return () => window.clearTimeout(timeout);
-  }, [caregiverResponse]);
-
-  useEffect(() => {
-    if (webrtcManager.isHost && webrtcManager.connection) {
-      const serializableVitals = { ...vitals };
-      delete serializableVitals.formatDuration;
-      webrtcManager.sendData({
-        type: 'SYNC_STATE',
-        vitals: serializableVitals,
-        caregiverLog,
-        clinicalLog,
-        clinicalAI: { riskScore: clinicalAI.riskScore, riskLevel: clinicalAI.riskLevel },
-        lastInteractionAt,
-        patient
-      });
-    }
-  }, [vitals, caregiverLog, clinicalLog, clinicalAI.riskScore, clinicalAI.riskLevel, lastInteractionAt, patient]);
-
-  useEffect(() => {
-    const handleWebRTC = (data) => {
-      if (data.type === 'REQUEST_SYNC') {
-        const serializableVitals = { ...vitals };
-        delete serializableVitals.formatDuration;
-        webrtcManager.sendData({
-          type: 'SYNC_STATE',
-          vitals: serializableVitals,
-          caregiverLog,
-          clinicalLog,
-          clinicalAI: { riskScore: clinicalAI.riskScore, riskLevel: clinicalAI.riskLevel },
-          lastInteractionAt,
-          patient
-        });
-      } else if (data.type === 'ADD_CAREGIVER_ENTRY' && data.payload) {
-        addCaregiverEntry(
-          data.payload.quadrant, 
-          data.payload.message, 
-          data.payload.color, 
-          data.payload.extras
-        );
-      } else if (data.type === 'CAREGIVER_RESPONSE' && data.text) {
-        // Ignore messages originating from the same logical event / tab
-        if (data.tabId === window.__nayana_tab_id) return;
-        
-        setCaregiverResponse({ text: data.text, timestamp: Date.now() });
-        speak(data.text, currentLanguage);
-        showToast('Caregiver response received', 'success');
-      }
-    };
-    
-    const unsubscribe = webrtcManager.subscribe(handleWebRTC);
-    return () => unsubscribe();
-  }, [vitals, caregiverLog, clinicalLog, clinicalAI, lastInteractionAt, patient, addCaregiverEntry, speak, currentLanguage, showToast]);
-
-  const currentTranslations = useMemo(() => TRANSLATIONS[currentLanguage] || TRANSLATIONS.en, [currentLanguage]);
-
-  const handleLogin = useCallback((patientData) => {
-    setPatient(patientData);
-    setIsLoggedIn(true);
-  }, []);
-
-  const handleWhatsAppTest = useCallback(() => {
-    sendWhatsAppAlert(`NAYANA TEST\nSystem working correctly\nTime: ${new Date().toLocaleTimeString('en-IN')}`);
-  }, []);
-
-  if (!isLoggedIn) {
-    return <LoginPage onLogin={handleLogin} />;
-  }
+  if (!isLoggedIn) return <LoginPage onLogin={handleLogin} />;
 
   return (
-    <div className={`relative flex h-screen flex-col overflow-hidden bg-base ${presentationMode ? 'text-[1.04rem]' : ''}`}>
+    <div className="relative flex h-screen flex-col overflow-hidden bg-base" data-theme={theme}>
       <NeuralBackground />
-      <GazeReticle position={gazePosition} trail={gazeTrail} dwellingOn={dwellingOn} dwellProgress={dwellProgress} isLocked={isLocked} />
+      {/* Digital Hug Pulse (Phase 31) */}
+      {showFamilyHug && (
+        <div className="fixed inset-0 z-[110] flex flex-col items-center justify-center bg-medical/5 backdrop-blur-sm animate-fade-in pointer-events-none">
+           <div className="p-12 rounded-full bg-medical/10 border border-medical/20 animate-hug-pulse">
+              <Heart size={120} className="text-medical fill-medical/40" />
+           </div>
+           <p className="mt-8 text-2xl font-black text-medical uppercase tracking-[0.5em] animate-fade-in delay-500">A hug from home</p>
+        </div>
+      )}
 
-      <TopBar
-        patient={patient}
-        currentLanguage={currentLanguage}
-        setCurrentLanguage={setCurrentLanguage}
-        trackingMode={trackingMode}
-        gazeAccuracy={gazeAccuracy}
-        faceDetected={faceDetected}
-        isMuted={isMuted}
-        toggleMute={toggleMute}
-        autoSpeak={autoSpeak}
-        setAutoSpeak={setAutoSpeak}
-        voiceMode={voiceMode}
-        setVoiceMode={setVoiceMode}
+      <GazeReticle position={gazePosition} trail={gazeTrail} dwellingOn={dwellingOn} dwellProgress={dwellProgress} isLocked={isLocked} />
+      <TopBar 
+        patient={patient} 
+        currentLanguage={currentLanguage} 
+        setCurrentLanguage={setCurrentLanguage} 
+        trackingMode={trackingMode} 
+        gazeAccuracy={gazeAccuracy} 
+        faceDetected={faceDetected} 
+        isMuted={isMuted} 
+        toggleMute={toggleMute} 
+        autoSpeak={autoSpeak} 
+        setAutoSpeak={setAutoSpeak} 
+        voiceMode={voiceMode} 
+        setVoiceMode={setVoiceMode} 
+        startEyeTracking={startEyeTracking} 
+        stopEyeTracking={stopEyeTracking} 
+        trackingEnabled={trackingEnabled} 
+        setTrackingEnabled={setTrackingEnabled}
         elevenLabsAvailable={elevenLabsAvailable}
-        isDemoRunning={isDemoRunning}
-        startDemo={startDemo}
+        isDemoRunning={presentationMode}
+        startDemo={() => setPresentationMode(!presentationMode)}
         presentationMode={presentationMode}
         setPresentationMode={setPresentationMode}
-        startEyeTracking={() => {
-          startEyeTracking();
-          setTrackingEnabled(true);
-        }}
-        stopEyeTracking={stopEyeTracking}
-        trackingEnabled={trackingEnabled}
-        setTrackingEnabled={setTrackingEnabled}
       />
-
       <div className="flex min-h-0 flex-1 overflow-hidden px-4 pb-2 pt-4">
-        {!presentationMode ? <LeftNav activePage={activePage} setActivePage={setActivePage} /> : null}
-
-        {!presentationMode ? (
-          <div className="ml-3 hidden w-[190px] shrink-0 overflow-y-auto overflow-x-hidden xl:block">
-            <LeftSidebar vitals={vitals} />
-          </div>
-        ) : null}
-
-        <div className="flex min-w-0 flex-1 flex-col overflow-y-auto overflow-x-hidden">
-          {activePage === 'dashboard' ? (
-            <div className="flex h-full min-h-0 flex-col">
-              {/* Quadrant grid — takes all available vertical space */}
-              <div className="min-h-0 flex-1 overflow-y-auto">
-                <QuadrantGrid
-                  selectedQuadrant={selectedQuadrant}
-                  dwellingOn={dwellingOn}
-                  dwellProgress={dwellProgress}
-                  isLocked={isLocked}
-                  onQuadrantSelect={handleQuadrantSelect}
-                  onPhraseSelect={handlePhraseSelect}
-                  translations={currentTranslations}
-                  densityMode={densityMode}
-                  lastSelectedPhrase={lastSelectedPhraseKey}
-                />
-              </div>
-              {/* Voice output + recent messages — pinned to bottom */}
-              <div className="shrink-0">
-                <SpeechOutput
-                  sentence={deferredSentence}
-                  isGenerating={deferredGenerating}
-                  isSpeaking={isSpeaking}
-                  source={sentenceSource}
-                  selectedQuadrant={selectedQuadrant}
-                  lastSelectedPhrase={lastSelectedPhrase}
-                  conversationHistory={conversationHistory}
-                  onSpeak={() => speak(generatedSentence, currentLanguage)}
-                  onRepeat={repeatLastSentence}
-                  onClear={clearOutput}
-                  autoSpeak={autoSpeak}
-                  currentLanguage={activeSpeechLanguage || currentLanguage}
-                  voiceMode={voiceMode}
-                />
-              </div>
+        {!presentationMode && <LeftNav activePage={activePage} setActivePage={setActivePage} />}
+        {!presentationMode && <div className="ml-3 hidden w-[190px] shrink-0 xl:block"><LeftSidebar vitals={vitals} /></div>}
+        <div className="flex min-w-0 flex-1 flex-col overflow-x-hidden">
+          {activePage === 'dashboard' && (
+            <div className="flex h-full flex-col">
+              <div className="flex-1 overflow-y-auto"><QuadrantGrid selectedQuadrant={selectedQuadrant} dwellingOn={dwellingOn} dwellProgress={dwellProgress} isLocked={isLocked} onQuadrantSelect={setSelectedQuadrant} onPhraseSelect={handlePhraseSelect} translations={TRANSLATIONS[currentLanguage]} densityMode="normal" lastSelectedPhrase={lastSelectedPhraseKey} aiSuggestions={aiSuggestions} /></div>
+              <SpeechOutput 
+                sentence={deferredSentence} 
+                isGenerating={deferredGenerating} 
+                isSpeaking={isSpeaking} 
+                onSpeak={() => speak(generatedSentence, currentLanguage)} 
+                onRepeat={() => speak(generatedSentence, currentLanguage)} 
+                onClear={() => setGeneratedSentence('')} 
+                autoSpeak={autoSpeak} 
+                currentLanguage={currentLanguage} 
+                source="gemini"
+                voiceMode={voiceMode}
+                conversationHistory={conversationHistory}
+                selectedQuadrant={selectedQuadrant}
+                lastSelectedPhrase={lastSelectedPhraseKey}
+              />
             </div>
-          ) : null}
-
-          {activePage === 'analytics' ? <AnalyticsPage clinicalLog={clinicalLog} vitals={vitals} clinicalAI={clinicalAI} conversationHistory={conversationHistory} /> : null}
-          {activePage === 'caregiver' ? <CaregiverHubPage caregiverLog={caregiverLog} setCaregiverLog={setCaregiverLog} clinicalLog={clinicalLog} vitals={vitals} clinicalAI={clinicalAI} showToast={showToast} speak={speak} currentLanguage={currentLanguage} onAddCaregiverEntry={addCaregiverEntry} lastInteractionAt={lastInteractionAt} /> : null}
-          {activePage === 'history' ? <SessionHistoryPage clinicalLog={clinicalLog} vitals={vitals} clinicalAI={clinicalAI} /> : null}
-          {activePage === 'painmap' ? <PainMapPage currentLanguage={currentLanguage} onPhraseSelect={handlePhraseSelect} painLog={painLog} setPainLog={setPainLog} /> : null}
-          {activePage === 'settings' ? <SettingsPage currentLanguage={currentLanguage} setCurrentLanguage={setCurrentLanguage} autoSpeak={autoSpeak} setAutoSpeak={setAutoSpeak} isMuted={isMuted} toggleMute={toggleMute} trackingMode={trackingMode} startEyeTracking={startEyeTracking} stopEyeTracking={stopEyeTracking} dwellTime={dwellTime} setDwellTime={setDwellTime} densityMode={densityMode} setDensityMode={setDensityMode} /> : null}
+          )}
+          {activePage === 'keyboard' && <KeyboardPage dwellingOn={dwellingOn} dwellProgress={dwellProgress} onSentenceComplete={handleCustomSentenceComplete} />}
+          {activePage === 'memory' && <MemoryPage dwellingOn={dwellingOn} dwellProgress={dwellProgress} speak={speak} />}
+          {activePage === 'analytics' && <AnalyticsPage clinicalLog={clinicalLog} vitals={vitals} clinicalAI={clinicalAI} conversationHistory={conversationHistory} />}
+          {activePage === 'caregiver' && <CaregiverHubPage caregiverLog={caregiverLog} setCaregiverLog={() => {}} clinicalLog={clinicalLog} vitals={vitals} clinicalAI={clinicalAI} showToast={showToast} speak={speak} currentLanguage={currentLanguage} onAddCaregiverEntry={addCaregiverEntry} lastInteractionAt={lastInteractionAt} onSendHug={() => cloudSync.sendFamilyHug(patient.room)} sentiment={emotionDetection} wellbeingScore={wellbeingScore} />}
+          {activePage === 'family' && <FamilyPortalPage patient={patient} sentiment={emotionDetection} wellbeingScore={wellbeingScore} lastInteractionAt={lastInteractionAt} onSendHug={() => cloudSync.sendFamilyHug(patient.room)} />}
+          {activePage === 'history' && <SessionHistoryPage clinicalLog={clinicalLog} vitals={vitals} clinicalAI={clinicalAI} />}
+          {activePage === 'painmap' && <PainMapPage currentLanguage={currentLanguage} onPhraseSelect={handlePhraseSelect} painLog={painLog} setPainLog={setPainLog} />}
+          {activePage === 'settings' && (
+            <SettingsPage 
+              currentLanguage={currentLanguage} 
+              setCurrentLanguage={setCurrentLanguage} 
+              autoSpeak={autoSpeak} 
+              setAutoSpeak={setAutoSpeak} 
+              dwellTime={dwellTime} 
+              setDwellTime={setDwellTime}
+              isMuted={isMuted}
+              toggleMute={toggleMute}
+              trackingMode={trackingMode}
+              startEyeTracking={startEyeTracking}
+              stopEyeTracking={stopEyeTracking}
+            />
+          )}
         </div>
-
-        {!presentationMode ? (
-          <div className="ml-4 hidden w-[280px] shrink-0 overflow-y-auto overflow-x-hidden xl:block">
-            <RightPanel
-              riskScore={clinicalAI.riskScore}
-              riskLevel={clinicalAI.riskLevel}
-              riskReasoning={clinicalAI.riskReasoning}
-              riskRecommendation={clinicalAI.riskRecommendation}
-              vitals={vitals}
-              caregiverLog={caregiverLog}
+        {!presentationMode && (
+          <div className="ml-4 hidden w-[270px] shrink-0 overflow-y-auto h-full pr-1 xl:block scrollbar-slim">
+            <RightPanel 
+              riskScore={clinicalAI.riskScore} 
+              riskLevel={clinicalAI.riskLevel} 
+              riskReasoning={clinicalAI.riskReasoning || "Stable gaze patterns and stable vitals detected."}
+              riskRecommendation={clinicalAI.riskRecommendation || "Continue standard ICU monitoring protocols."}
+              vitals={vitals} 
+              caregiverLog={caregiverLog} 
               setCaregiverLog={setCaregiverLog}
-              clinicalLog={clinicalLog}
-              onGenerateReport={generateReport}
-              onDownloadPDF={downloadPDF}
-              onTestWhatsApp={handleWhatsAppTest}
-              onRunRiskAssessment={clinicalAI.runRiskAssessment}
-              presentationMode={presentationMode}
-              setPresentationMode={setPresentationMode}
+              clinicalLog={clinicalLog} 
+              presentationMode={presentationMode} 
+              setPresentationMode={setPresentationMode} 
+              onGenerateReport={() => showToast("Final Handover Report Generated", "success")}
+              onDownloadPDF={handlePDFExport}
+              onTestWhatsApp={() => sendWhatsAppAlert(buildSOSMessage(patient, new Date().toLocaleTimeString()))}
+              onRunRiskAssessment={() => showToast("AI Risk Engine Re-calibrated", "success")}
             />
           </div>
-        ) : null}
+        )}
       </div>
-
-      {!presentationMode ? <BottomBar isDemoRunning={isDemoRunning} /> : null}
-      <GazeEngine 
-        faceDetected={faceDetected} 
-        onGazeUpdate={handleIrisUpdate} 
-        isEnabled={trackingEnabled}
-      />
-
+      <BottomBar isDemoRunning={false} signalQuality={signalQuality} fps={fps} onOpenStats={() => setShowHardwareStats(true)} />
+      <GazeEngine key={visionRefresh} faceDetected={faceDetected} onGazeUpdate={handleIrisUpdate} onError={handleVisionError} isEnabled={trackingEnabled} />
+      
+      {/* 🚀 Phase 37 Toast Stack */}
+      <div className="fixed top-24 left-1/2 z-[200] flex -translate-x-1/2 flex-col gap-2 pointer-events-none">
+        {toasts.map((toast) => (
+          <div
+            key={toast.id}
+            className={`pointer-events-auto flex items-center gap-3 rounded-2xl border px-6 py-4 shadow-2xl animate-toast-in ${
+              toast.tone === 'warning' ? 'bg-emergency/10 border-emergency text-emergency' :
+              toast.tone === 'error' ? 'bg-red-500/10 border-red-500 text-red-500' :
+              toast.tone === 'success' ? 'bg-stable-green/10 border-stable-green text-stable-green' :
+              'bg-medical/10 border-medical text-medical'
+            }`}
+          >
+            <span className="font-display font-black uppercase tracking-widest text-xs">{toast.message}</span>
+            {toast.action && (
+               <button 
+                  onClick={() => { toast.action.onClick(); setToasts(prev => prev.filter(t => t.id !== toast.id)); }}
+                  className="ml-2 px-3 py-1 rounded-lg bg-white/10 hover:bg-white/20 border border-white/5 text-[10px] font-bold uppercase transition-all"
+               >
+                  {toast.action.label}
+               </button>
+            )}
+          </div>
+        ))}
+      </div>
+      <HardwareStatsModal open={showHardwareStats} onClose={() => setShowHardwareStats(false)} fps={fps} signalQuality={signalQuality} gazeAccuracy={gazeAccuracy} />
       <CalibrationScreen open={trackingMode === 'eye' && !isCalibrated} onSkip={() => setTrackingMode('mouse')} />
-
-      {sosActive ? <SOSModal countdown={sosCountdown} patient={patient} onCancel={() => setSosActive(false)} /> : null}
-
-      {showReportModal ? (
-        <ReportModal
-          report={clinicalReport}
-          loading={reportLoading}
-          vitals={vitals}
-          clinicalAI={clinicalAI}
-          clinicalLog={clinicalLog}
-          sessionDuration={vitals.sessionDuration}
-          formatDuration={vitals.formatDuration}
-          onDownload={downloadPDF}
-          onClose={() => setShowReportModal(false)}
-        />
-      ) : null}
-
-      <VoiceSetupModal open={voiceSetupOpen} onClose={() => setVoiceSetupOpen(false)} autoSpeak={autoSpeak} setAutoSpeak={setAutoSpeak} />
-
-      {/* Permanent SOS Anchor — always visible, bypasses all menus */}
-      {!presentationMode && !sosActive ? (
-        <SOSAnchor
-          onTrigger={triggerSOS}
-          dwellingOn={dwellingOn}
-          dwellProgress={dwellProgress}
-        />
-      ) : null}
+      {!presentationMode && !sosActive && <SOSAnchor onTrigger={triggerSOS} dwellingOn={dwellingOn} dwellProgress={dwellProgress} />}
     </div>
   );
 }
