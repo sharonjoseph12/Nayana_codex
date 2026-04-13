@@ -1,7 +1,7 @@
 import PropTypes from 'prop-types';
 
-export default function GazeReticle({ position = null, trail = [], dwellingOn = null, dwellProgress = 0, isLocked = false }) {
-  if (!position) return null;
+export default function GazeReticle({ position = null, trail = [], dwellingOn = null, dwellProgress = 0, isLocked = false, isVisible = true }) {
+  if (!position || !isVisible) return null;
 
   const circumference = 113; // r=18
   const strokeDashoffset = circumference - (circumference * dwellProgress) / 100;
@@ -31,8 +31,8 @@ export default function GazeReticle({ position = null, trail = [], dwellingOn = 
           top: position.y - 24,
           width: 48,
           height: 48,
-          transition: 'transform 0.15s cubic-bezier(0.16, 1, 0.3, 1)',
           transform: isLocked ? 'scale(0.85)' : 'scale(1)',
+          transition: 'transform 0.15s cubic-bezier(0.16, 1, 0.3, 1)',
         }}
       >
         {/* Dynamic Dwell Progress Circle */}
@@ -52,11 +52,11 @@ export default function GazeReticle({ position = null, trail = [], dwellingOn = 
         </svg>
 
         {/* Outer Locking Corners */}
-        <div className={`absolute inset-0 transition-opacity duration-300 ${isLocked ? 'opacity-100' : 'opacity-40'}`}>
-          <div className={`absolute top-0 left-0 w-2 h-2 border-t-2 border-l-2 ${isLocked ? 'border-emerald-400' : 'border-medical'} transition-colors`} />
-          <div className={`absolute top-0 right-0 w-2 h-2 border-t-2 border-r-2 ${isLocked ? 'border-emerald-400' : 'border-medical'} transition-colors`} />
-          <div className={`absolute bottom-0 left-0 w-2 h-2 border-b-2 border-l-2 ${isLocked ? 'border-emerald-400' : 'border-medical'} transition-colors`} />
-          <div className={`absolute bottom-0 right-0 w-2 h-2 border-b-2 border-r-2 ${isLocked ? 'border-emerald-400' : 'border-medical'} transition-colors`} />
+        <div className={`absolute inset-0 transition-opacity duration-300 ${isLocked ? 'opacity-100' : 'opacity-60'}`}>
+          <div className={`absolute top-0 left-0 w-3 h-3 border-t-2 border-l-2 ${isLocked ? 'border-emerald-400' : 'border-medical'} transition-colors shadow-[0_0_10px_rgba(0,212,255,0.5)]`} />
+          <div className={`absolute top-0 right-0 w-3 h-3 border-t-2 border-r-2 ${isLocked ? 'border-emerald-400' : 'border-medical'} transition-colors shadow-[0_0_10px_rgba(0,212,255,0.5)]`} />
+          <div className={`absolute bottom-0 left-0 w-3 h-3 border-b-2 border-l-2 ${isLocked ? 'border-emerald-400' : 'border-medical'} transition-colors shadow-[0_0_10px_rgba(0,212,255,0.5)]`} />
+          <div className={`absolute bottom-0 right-0 w-3 h-3 border-b-2 border-r-2 ${isLocked ? 'border-emerald-400' : 'border-medical'} transition-colors shadow-[0_0_10px_rgba(0,212,255,0.5)]`} />
         </div>
 
         {/* Lock Animation (Pulsing ring when locked) */}
@@ -89,4 +89,5 @@ GazeReticle.propTypes = {
   dwellingOn: PropTypes.string,
   dwellProgress: PropTypes.number,
   isLocked: PropTypes.bool,
+  isVisible: PropTypes.bool,
 };

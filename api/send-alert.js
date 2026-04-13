@@ -27,9 +27,12 @@ export default async function handler(req, res) {
 
   try {
     const client = twilio(process.env.TWILIO_SID, process.env.TWILIO_TOKEN);
+    // Phase 46: Robust Number Injection
+    const targetNumber = process.env.CAREGIVER_NUMBER.replace(/whatsapp:|\+/g, '').trim();
+    
     await client.messages.create({
       from: 'whatsapp:+14155238886',
-      to: `whatsapp:${process.env.CAREGIVER_NUMBER}`,
+      to: `whatsapp:+${targetNumber}`,
       body: message,
     });
 

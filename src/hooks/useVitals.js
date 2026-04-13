@@ -5,12 +5,30 @@ export function useVitals() {
   const [blinkRate, setBlinkRate] = useState(14);
   const [focusScore, setFocusScore] = useState(82);
   const [stressLevel, setStressLevel] = useState('Low');
+  
+  // --- Phase 20: Digital History Buffers (Clinical Trends) ---
+  const [heartRateHistory, setHeartRateHistory] = useState(new Array(30).fill(72));
+  const [stressHistory, setStressHistory] = useState(new Array(30).fill(20)); // Low = 20
+  
   const [alertStatus, setAlertStatus] = useState('Stable');
   const [sessionDuration, setSessionDuration] = useState(0);
   const [fatigueRisk, setFatigueRisk] = useState('Normal');
 
   const blinkTimestamps = useRef([]);
 
+  // --- Step 1: Sampling Buffer Logic ---
+  useEffect(() => {
+    const historyInterval = window.setInterval(() => {
+      setHeartRateHistory(prev => [...prev.slice(1), heartRate]);
+      
+      const stressMap = { 'Low': 20, 'Moderate': 50, 'High': 90 };
+      setStressHistory(prev => [...prev.slice(1), stressMap[stressLevel]]);
+    }, 10000); // 10s Sample
+
+    return () => window.clearInterval(historyInterval);
+  }, [heartRate, stressLevel]);
+
+  // --- Step 2: Live Sensor (Simulation for Demo) ---
   useEffect(() => {
     const heartRateInterval = window.setInterval(() => {
       setHeartRate((previous) =>
@@ -100,6 +118,8 @@ export function useVitals() {
     blinkRate,
     focusScore,
     stressLevel,
+    heartRateHistory,
+    stressHistory,
     alertStatus,
     sessionDuration,
     fatigueRisk,

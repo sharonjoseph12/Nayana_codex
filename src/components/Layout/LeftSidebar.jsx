@@ -17,15 +17,15 @@ const LeftSidebar = memo(function LeftSidebar({ vitals }) {
         <div className="mt-4 grid grid-cols-1 gap-3">
           <VitalCard
             label="Fatigue Risk"
-            value={vitals.fatigueRisk}
-            tone={vitals.fatigueRisk === 'Alert' ? 'red' : vitals.fatigueRisk === 'Watch' ? 'violet' : 'emerald'}
+            value={vitals?.fatigueRisk || 'Stable'}
+            tone={vitals?.fatigueRisk === 'Alert' ? 'red' : vitals?.fatigueRisk === 'Watch' ? 'violet' : 'emerald'}
             icon={ShieldAlert}
           />
           <VitalCard
             label="Session Health"
-            value={vitals.sessionHealthScore}
+            value={Math.round(vitals?.sessionHealthScore || 0)}
             unit="/100"
-            tone={vitals.sessionHealthScore >= 75 ? 'emerald' : vitals.sessionHealthScore >= 50 ? 'cyan' : 'red'}
+            tone={(vitals?.sessionHealthScore || 0) >= 75 ? 'emerald' : (vitals?.sessionHealthScore || 0) >= 50 ? 'cyan' : 'red'}
             icon={Gauge}
           />
         </div>
@@ -38,7 +38,7 @@ export default LeftSidebar;
 
 LeftSidebar.propTypes = {
   vitals: PropTypes.shape({
-    fatigueRisk: PropTypes.string.isRequired,
-    sessionHealthScore: PropTypes.number.isRequired,
+    fatigueRisk: PropTypes.string,
+    sessionHealthScore: PropTypes.number,
   }).isRequired,
 };

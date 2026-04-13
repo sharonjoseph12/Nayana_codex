@@ -1,12 +1,35 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Syne:wght@600;700&family=DM+Mono&display=swap');
 
+/* Standards-compliant Tailwind imports to resolve IDE warnings */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
   color-scheme: dark;
-  background: #060a14;
+  --bg-deep: #02040a;
+  --panel-bg: rgba(18, 18, 18, 0.7);
+  --medical-cyan: #00d4ff;
+  --stable-green: #00ffaa;
+  --emergency-red: #ff3d5a;
+  --warning-amber: #ffd700;
+}
+
+/* 🌙 Phase 24: Circadian Night Mode (Red Spectrum) */
+[data-theme='night'] {
+  --bg-deep: #0a0202; /* Deep blood black */
+  --medical-cyan: #ff3d5a; /* Shift cyan to red and amber */
+  --stable-green: #ff8e3d; 
+  --warning-amber: #ff2200;
+  filter: sepia(0.3) saturate(1.2);
+}
+
+[data-theme='night'] .shadow-cyan {
+  box-shadow: 0 0 20px rgba(255, 61, 90, 0.3);
+}
+
+[data-theme='night'] .text-medical {
+  color: #ff3d5a;
 }
 
 * {
@@ -18,7 +41,7 @@ body,
 #root {
   margin: 0;
   min-height: 100%;
-  background: #060a14;
+  background: var(--bg-deep);
   color: #e2e8f0;
   font-family: 'Inter', sans-serif;
 }
@@ -27,10 +50,11 @@ body {
   overflow: hidden;
 }
 
-button,
-select,
-input,
-textarea {
+/* Typography Overrides */
+.font-display { font-family: 'Syne', sans-serif; }
+.font-mono { font-family: 'DM Mono', monospace; }
+
+button, select, input, textarea {
   font: inherit;
 }
 
@@ -45,6 +69,7 @@ button {
 
 ::-webkit-scrollbar-track {
   background: transparent;
+  background-color: var(--bg-deep);
 }
 
 ::-webkit-scrollbar-thumb {
@@ -52,16 +77,25 @@ button {
   border-radius: 4px;
 }
 
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(255,255,255,0.2);
-}
-
+/* Global Clinical Panel System (Vanilla Refactored for IDE linting) */
 .panel {
-  @apply rounded-xl border border-white/[0.08] bg-white/[0.04] shadow-sm backdrop-blur-md;
+  border-radius: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .panel-elevated {
-  @apply rounded-xl border border-white/[0.08] bg-white/[0.06] backdrop-blur-xl shadow-md;
+  border-radius: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(40px);
+  -webkit-backdrop-filter: blur(40px);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), inset 0 1px 1px rgba(255, 255, 255, 0.05);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .text-balance {
@@ -77,12 +111,29 @@ button {
   50%       { opacity: 0.35; }
 }
 
-/* Tailwind doesn't generate these unless referenced directly — declare them as utilities */
+@keyframes pulseSOS {
+  0%, 100% { background-color: rgba(255, 61, 90, 0.1); border-color: rgba(255, 61, 90, 0.3); }
+  50%       { background-color: rgba(255, 61, 90, 0.25); border-color: rgba(255, 61, 90, 0.6); box-shadow: 0 0 30px rgba(255, 61, 90, 0.2); }
+}
+
 @layer utilities {
   .animate-pulseSoft {
     animation: pulseSoft 1.8s ease-in-out infinite;
   }
   .animate-spin-slow {
     animation: spin 0.9s linear infinite;
+  }
+  .animate-pulse-sos {
+    animation: pulseSOS 1s ease-in-out infinite;
+  }
+  .scrollbar-slim::-webkit-scrollbar {
+    width: 3px;
+  }
+  .scrollbar-slim::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 99px;
+  }
+  .scrollbar-slim:hover::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.15);
   }
 }

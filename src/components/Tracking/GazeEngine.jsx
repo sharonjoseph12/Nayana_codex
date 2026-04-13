@@ -4,7 +4,7 @@ import { Camera, AlertCircle, Loader2 } from 'lucide-react';
 
 // Using the same MediaPipe logic as the worker, but directly in the component for reliability
 // Throttled to ensure UI smoothness
-export default function GazeEngine({ faceDetected, onGazeUpdate, isEnabled = true }) {
+export default function GazeEngine({ faceDetected, onGazeUpdate, onError, isEnabled = true }) {
   const [cameraAvailable, setCameraAvailable] = useState(false);
   const [isInitializing, setIsInitializing] = useState(false);
   const [error, setError] = useState(null);
@@ -96,6 +96,33 @@ export default function GazeEngine({ faceDetected, onGazeUpdate, isEnabled = tru
     if (videoRef.current.readyState >= 2) {
       try {
         const results = landmarkerRef.current.detect(videoRef.current);
+        
+        // --- Phase 19: Hardware & Environmental Diagnostics ---
+        const canvas = canvasRef.current;
+        const video = videoRef.current;
+        const ctx = canvas?.getContext('2d', { willReadFrequently: true });
+        let brightness = 0;
+        
+        // Throttled brightness check (every ~60 frames)
+        if (canvas && scanLinePos.current < 2) {
+           const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+           const data = imageData.data;
+           let sum = 0;
+           for(let i=0; i<data.length; i+=40) { // Sparse sampling for performance
+             sum += (data[i] + data[i+1] + data[i+2]) / 3;
+           }
+           brightness = sum / (data.length / 40);
+           
+           // Notify Caregiver Hub if environment is subpar
+           if (brightness < 40) {
+             onGazeUpdateRef.current?.({ 
+               type: 'HARDWARE_HEALTH', 
+               status: 'LOW_LIGHT', 
+               message: 'ICU lighting too low for precision tracking' 
+             });
+           }
+        }
+
         if (results && results.faceLandmarks?.[0]) {
           const lms = results.faceLandmarks[0];
           
@@ -131,13 +158,31 @@ export default function GazeEngine({ faceDetected, onGazeUpdate, isEnabled = tru
             irisY: (lp.y + rp.y) / 2
           };
 
-          onGazeUpdateRef.current?.({ 
-            irisX: eyesRef.current.irisX, 
-            irisY: eyesRef.current.irisY,
-            stability: 0.8
-          });
+          const ix = eyesRef.current.irisX;
+          const iy = eyesRef.current.irisY;
+
+          // Validate Signal Health (Avoid center-screen ghosting on initialization)
+          if (typeof ix === 'number' && typeof iy === 'number' && !isNaN(ix) && !isNaN(iy)) {
+            onGazeUpdateRef.current?.({ 
+              gaze: {
+                x: ix * window.innerWidth,
+                y: iy * window.innerHeight
+              },
+              irisX: ix, 
+              irisY: iy,
+              stability: 0.95,
+              health: brightness < 40 ? 'Fair' : 'Excellent',
+              confidence: 0.95
+            });
+          }
         } else {
           eyesRef.current = null;
+          // Notify Caregiver Hub of occlusion
+          onGazeUpdateRef.current?.({ 
+            type: 'HARDWARE_HEALTH', 
+            status: 'OCCLUDED', 
+            message: 'Patient face not visible' 
+          });
         }
       } catch (err) {
         console.error('Vision processing error:', err);
@@ -196,6 +241,7 @@ export default function GazeEngine({ faceDetected, onGazeUpdate, isEnabled = tru
         console.error('Core Vision Init Failure:', err);
         setError(err.message);
         setIsInitializing(false);
+        if (onError) onError(err);
       }
     }
 
@@ -213,7 +259,8 @@ export default function GazeEngine({ faceDetected, onGazeUpdate, isEnabled = tru
 
   return (
     <div style={{
-      position: 'fixed', bottom: '80px', left: '16px',
+      position: 'fixed', top: '16px', left: '50%',
+      transform: 'translateX(-50%)',
       width: '120px', height: '90px', borderRadius: '12px',
       overflow: 'hidden', border: '1px solid rgba(0,212,255,0.3)',
       zIndex: 50, background: '#080c10',
@@ -264,5 +311,6 @@ export default function GazeEngine({ faceDetected, onGazeUpdate, isEnabled = tru
 GazeEngine.propTypes = {
   faceDetected: PropTypes.bool.isRequired,
   onGazeUpdate: PropTypes.func.isRequired,
+  onError: PropTypes.func,
   isEnabled: PropTypes.bool,
 };

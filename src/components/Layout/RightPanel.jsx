@@ -10,7 +10,6 @@ const RightPanel = memo(function RightPanel({
   riskLevel,
   riskReasoning,
   riskRecommendation,
-  vitals,
   caregiverLog,
   setCaregiverLog,
   clinicalLog,
@@ -21,13 +20,6 @@ const RightPanel = memo(function RightPanel({
   presentationMode,
   setPresentationMode,
 }) {
-  const miniStats = [
-    { label: 'Heart', value: `${vitals.heartRate} BPM`, icon: ShieldCheck, tone: 'text-emergency' },
-    { label: 'Blink', value: `${vitals.blinkRate}/min`, icon: Siren, tone: 'text-medical' },
-    { label: 'Focus', value: `${vitals.focusScore}%`, icon: MessagesSquare, tone: 'text-social' },
-    { label: 'Stress', value: vitals.stressLevel, icon: ShieldCheck, tone: 'text-personal' },
-  ];
-
   return (
     <div className="space-y-4 pl-2">
       <RiskPanel
@@ -38,23 +30,6 @@ const RightPanel = memo(function RightPanel({
         onRunRiskAssessment={onRunRiskAssessment}
       />
 
-      <section className="panel-elevated p-4">
-        <p className="text-xs uppercase tracking-[0.28em] text-white/45">Vitals Snapshot</p>
-        <div className="mt-4 grid grid-cols-2 gap-3">
-          {miniStats.map((stat) => {
-            const Icon = stat.icon;
-            return (
-              <div key={stat.label} className="rounded-2xl border border-white/8 bg-white/[0.03] p-3">
-                <div className="mb-2 flex items-center justify-between text-xs text-white/40">
-                  <span>{stat.label}</span>
-                  <Icon size={12} className={stat.tone} />
-                </div>
-                <div className="text-sm text-white">{stat.value}</div>
-              </div>
-            );
-          })}
-        </div>
-      </section>
 
       <SymptomTimeline clinicalLog={clinicalLog} />
       <CaregiverLog caregiverLog={caregiverLog} setCaregiverLog={setCaregiverLog} />
@@ -99,12 +74,6 @@ RightPanel.propTypes = {
   riskLevel: PropTypes.string.isRequired,
   riskReasoning: PropTypes.string.isRequired,
   riskRecommendation: PropTypes.string.isRequired,
-  vitals: PropTypes.shape({
-    heartRate: PropTypes.number.isRequired,
-    blinkRate: PropTypes.number.isRequired,
-    focusScore: PropTypes.number.isRequired,
-    stressLevel: PropTypes.string.isRequired,
-  }).isRequired,
   caregiverLog: PropTypes.arrayOf(PropTypes.object).isRequired,
   setCaregiverLog: PropTypes.func.isRequired,
   clinicalLog: PropTypes.arrayOf(PropTypes.object).isRequired,

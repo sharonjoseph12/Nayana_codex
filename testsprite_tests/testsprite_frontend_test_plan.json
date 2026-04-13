@@ -1,44 +1,648 @@
-{
-  "project_name": "Nayana Pulse",
-  "requirement_groups": [
-    {
-      "requirement_group_name": "Clinical Workflow",
-      "requirements": [
-        {
-          "requirement_name": "Patient Registration",
-          "requirement_description": "Users should be able to register a patient and access the dashboard.",
-          "test_cases": [
-            {
-              "test_case_id": "REG-01",
-              "test_case_name": "Successful Registration",
-              "preconditions": "Application is running at http://localhost:5173",
-              "test_steps": [
-                {
-                  "step_id": 1,
-                  "step_description": "Enter 'Arjun Mehta' in Name field",
-                  "expected_result": "Name is entered"
-                },
-                {
-                  "step_id": 2,
-                  "step_description": "Enter '45' in Age field",
-                  "expected_result": "Age is entered"
-                },
-                {
-                  "step_id": 3,
-                  "step_description": "Enter 'ALS' in Condition field",
-                  "expected_result": "Condition is entered"
-                },
-                {
-                  "step_id": 4,
-                  "step_description": "Click 'Start Session'",
-                  "expected_result": "Dashboard is displayed"
-                }
-              ],
-              "priority": "High"
-            }
-          ]
-        }
-      ]
-    }
-  ]
-}
+[
+  {
+    "id": "TC001",
+    "title": "Create a patient session from registration",
+    "description": "This test verifies a patient can complete registration with valid details and the app transitions into an active session state ready for use.",
+    "category": "Patient Registration",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /register"
+      },
+      {
+        "type": "action",
+        "description": "Fill Patient A into the name field"
+      },
+      {
+        "type": "action",
+        "description": "Fill a valid age into the age field"
+      },
+      {
+        "type": "action",
+        "description": "Fill Stroke into the condition field"
+      },
+      {
+        "type": "action",
+        "description": "Submit the registration form"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify an active patient session is created and the main patient app view is displayed"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC002",
+    "title": "Persist and restore patient session after reload",
+    "description": "This test verifies that after registering, reloading the app restores the same patient session without requiring re-registration.",
+    "category": "Patient Registration",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /register"
+      },
+      {
+        "type": "action",
+        "description": "Fill Patient Restore into the name field"
+      },
+      {
+        "type": "action",
+        "description": "Fill a valid age into the age field"
+      },
+      {
+        "type": "action",
+        "description": "Fill ALS into the condition field"
+      },
+      {
+        "type": "action",
+        "description": "Submit the registration form"
+      },
+      {
+        "type": "action",
+        "description": "Reload the page"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the app restores the existing patient session rather than returning to registration"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC003",
+    "title": "Play synthesized speech for a selected phrase",
+    "description": "This test verifies that selecting a phrase results in audible playback starting after speech is generated successfully.",
+    "category": "Voice Synthesis (TTS)",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to the application home page"
+      },
+      {
+        "type": "action",
+        "description": "Complete patient registration with a valid name, age, and condition"
+      },
+      {
+        "type": "action",
+        "description": "Select a phrase for speech output"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify an audio playback experience starts for the selected phrase"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC004",
+    "title": "Complete calibration and start gaze-based selection events",
+    "description": "This test verifies gaze tracking can be initialized, calibrated successfully, and begins producing quadrant selection events that drive the communication UI.",
+    "category": "Gaze Tracking Dashboard",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /register"
+      },
+      {
+        "type": "action",
+        "description": "Fill Patient Gaze into the name field"
+      },
+      {
+        "type": "action",
+        "description": "Fill a valid age into the age field"
+      },
+      {
+        "type": "action",
+        "description": "Fill Locked-in syndrome into the condition field"
+      },
+      {
+        "type": "action",
+        "description": "Submit the registration form"
+      },
+      {
+        "type": "action",
+        "description": "Allow camera access when prompted by the browser"
+      },
+      {
+        "type": "action",
+        "description": "Start gaze calibration"
+      },
+      {
+        "type": "action",
+        "description": "Wait for calibration to complete"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify gaze tracking is active and quadrant-based selection events are being reflected in the communication UI"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC005",
+    "title": "Trigger phrase-to-speech and start audio playback",
+    "description": "This test verifies selecting a communication phrase results in TTS playback starting in the browser.",
+    "category": "Gaze Tracking Dashboard",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /register"
+      },
+      {
+        "type": "action",
+        "description": "Fill Patient TTS into the name field"
+      },
+      {
+        "type": "action",
+        "description": "Fill a valid age into the age field"
+      },
+      {
+        "type": "action",
+        "description": "Fill ALS into the condition field"
+      },
+      {
+        "type": "action",
+        "description": "Submit the registration form"
+      },
+      {
+        "type": "action",
+        "description": "Select a communication phrase using the available selection mechanism"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify audio playback starts for the selected phrase"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC006",
+    "title": "Play multiple phrases sequentially without losing order",
+    "description": "This test verifies that selecting multiple phrases in sequence results in multiple playbacks occurring reliably without skipping or freezing the UI.",
+    "category": "Voice Synthesis (TTS)",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to the application home page"
+      },
+      {
+        "type": "action",
+        "description": "Complete patient registration with a valid name, age, and condition"
+      },
+      {
+        "type": "action",
+        "description": "Select a first phrase for speech output"
+      },
+      {
+        "type": "action",
+        "description": "Select a second phrase for speech output"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the app initiates playback for the selected phrases sequentially"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC007",
+    "title": "Play audio reliably for multiple sequential phrase selections",
+    "description": "This test verifies that selecting multiple phrases in sequence results in multiple audio playbacks without the UI getting stuck.",
+    "category": "Gaze Tracking Dashboard",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /register"
+      },
+      {
+        "type": "action",
+        "description": "Fill Patient Multi TTS into the name field"
+      },
+      {
+        "type": "action",
+        "description": "Fill a valid age into the age field"
+      },
+      {
+        "type": "action",
+        "description": "Fill Brainstem stroke into the condition field"
+      },
+      {
+        "type": "action",
+        "description": "Submit the registration form"
+      },
+      {
+        "type": "action",
+        "description": "Select a communication phrase using the available selection mechanism"
+      },
+      {
+        "type": "action",
+        "description": "Select a different communication phrase using the available selection mechanism"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the app plays audio for each selection without becoming unresponsive"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC008",
+    "title": "Enable fallback mode when calibration fails",
+    "description": "This test verifies that when calibration fails with low confidence, the app enables fallback mode and remains usable without crashing.",
+    "category": "Gaze Tracking Dashboard",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /register"
+      },
+      {
+        "type": "action",
+        "description": "Fill Patient Fallback into the name field"
+      },
+      {
+        "type": "action",
+        "description": "Fill a valid age into the age field"
+      },
+      {
+        "type": "action",
+        "description": "Fill Cervical injury into the condition field"
+      },
+      {
+        "type": "action",
+        "description": "Submit the registration form"
+      },
+      {
+        "type": "action",
+        "description": "Allow camera access when prompted by the browser"
+      },
+      {
+        "type": "action",
+        "description": "Start gaze calibration"
+      },
+      {
+        "type": "action",
+        "description": "Trigger a calibration failure using the app’s available calibration quality controls or retry flow until failure is indicated"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify fallback mode is enabled and the app provides guidance to retry calibration without a hard failure"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC009",
+    "title": "Retry queued speech and play audio when TTS becomes available",
+    "description": "This test verifies that queued phrases can be retried later and playback starts once speech generation succeeds.",
+    "category": "Voice Synthesis (TTS)",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to the application home page"
+      },
+      {
+        "type": "action",
+        "description": "Complete patient registration with a valid name, age, and condition"
+      },
+      {
+        "type": "action",
+        "description": "Enter an invalid or expired TTS API key in the app settings if available"
+      },
+      {
+        "type": "action",
+        "description": "Select a phrase for speech output"
+      },
+      {
+        "type": "action",
+        "description": "Update the TTS API key to a valid key in the app settings if available"
+      },
+      {
+        "type": "action",
+        "description": "Trigger a retry of queued voice items if the UI provides a retry control"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify a queued phrase begins audio playback"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC010",
+    "title": "Queue phrase for retry when TTS authorization fails",
+    "description": "This test verifies that when speech generation is unauthorized, the phrase is queued for retry and the user is not blocked from continuing.",
+    "category": "Voice Synthesis (TTS)",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to the application home page"
+      },
+      {
+        "type": "action",
+        "description": "Complete patient registration with a valid name, age, and condition"
+      },
+      {
+        "type": "action",
+        "description": "Enter an invalid or expired TTS API key in the app settings if available"
+      },
+      {
+        "type": "action",
+        "description": "Select a phrase for speech output"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the phrase is added to a queued state for later retry"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC011",
+    "title": "Do not mis-trigger phrases when no reliable gaze selection is available",
+    "description": "This test verifies that when fallback mode yields no reliable selection, the app does not trigger phrase selection or speech unexpectedly and remains stable.",
+    "category": "Gaze Tracking Dashboard",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /register"
+      },
+      {
+        "type": "action",
+        "description": "Fill Patient No Selection into the name field"
+      },
+      {
+        "type": "action",
+        "description": "Fill a valid age into the age field"
+      },
+      {
+        "type": "action",
+        "description": "Fill Neuromuscular disease into the condition field"
+      },
+      {
+        "type": "action",
+        "description": "Submit the registration form"
+      },
+      {
+        "type": "action",
+        "description": "Allow camera access when prompted by the browser"
+      },
+      {
+        "type": "action",
+        "description": "Enable fallback mode from the gaze tracking controls"
+      },
+      {
+        "type": "action",
+        "description": "Wait for gaze selection polling to run"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the communication UI shows that no reliable selection is available and no phrase is triggered"
+      }
+    ],
+    "priority": "High"
+  },
+  {
+    "id": "TC012",
+    "title": "Continue using the app when camera permission is denied",
+    "description": "This test verifies that denying camera permission does not crash the app and the user receives an actionable state to proceed without gaze tracking.",
+    "category": "Gaze Tracking Dashboard",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /register"
+      },
+      {
+        "type": "action",
+        "description": "Fill Patient No Camera into the name field"
+      },
+      {
+        "type": "action",
+        "description": "Fill a valid age into the age field"
+      },
+      {
+        "type": "action",
+        "description": "Fill Post-op recovery into the condition field"
+      },
+      {
+        "type": "action",
+        "description": "Submit the registration form"
+      },
+      {
+        "type": "action",
+        "description": "Deny camera access when prompted by the browser"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the app remains usable and shows an actionable message about enabling camera access for gaze tracking"
+      }
+    ],
+    "priority": "Medium"
+  },
+  {
+    "id": "TC013",
+    "title": "Continue selecting additional phrases after an initial TTS queue event",
+    "description": "This test verifies that after one phrase is queued due to a TTS failure, the user can select additional phrases without the UI getting stuck.",
+    "category": "Voice Synthesis (TTS)",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to the application home page"
+      },
+      {
+        "type": "action",
+        "description": "Complete patient registration with a valid name, age, and condition"
+      },
+      {
+        "type": "action",
+        "description": "Enter an invalid or expired TTS API key in the app settings if available"
+      },
+      {
+        "type": "action",
+        "description": "Select a first phrase for speech output"
+      },
+      {
+        "type": "action",
+        "description": "Select a second phrase for speech output"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the UI remains usable and both phrases appear in a queued state for later retry"
+      }
+    ],
+    "priority": "Medium"
+  },
+  {
+    "id": "TC014",
+    "title": "Start a new registration after an existing session",
+    "description": "This test verifies a caregiver can start a new patient registration after completing one session and the app switches to the new patient session.",
+    "category": "Patient Registration",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /register"
+      },
+      {
+        "type": "action",
+        "description": "Fill Patient One into the name field"
+      },
+      {
+        "type": "action",
+        "description": "Fill a valid age into the age field"
+      },
+      {
+        "type": "action",
+        "description": "Fill TBI into the condition field"
+      },
+      {
+        "type": "action",
+        "description": "Submit the registration form"
+      },
+      {
+        "type": "action",
+        "description": "Click the control to start registering a new patient"
+      },
+      {
+        "type": "action",
+        "description": "Fill Patient Two into the name field"
+      },
+      {
+        "type": "action",
+        "description": "Fill a valid age into the age field"
+      },
+      {
+        "type": "action",
+        "description": "Fill Parkinsonism into the condition field"
+      },
+      {
+        "type": "action",
+        "description": "Submit the registration form"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the app is now in an active session for the newly registered patient"
+      }
+    ],
+    "priority": "Medium"
+  },
+  {
+    "id": "TC015",
+    "title": "Show validation errors when required registration fields are missing",
+    "description": "This test verifies registration cannot be submitted with missing required fields and field-level validation errors are shown.",
+    "category": "Patient Registration",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /register"
+      },
+      {
+        "type": "action",
+        "description": "Fill a valid age into the age field"
+      },
+      {
+        "type": "action",
+        "description": "Fill Spinal cord injury into the condition field"
+      },
+      {
+        "type": "action",
+        "description": "Submit the registration form"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify a field-level validation error is displayed for the missing required name field"
+      }
+    ],
+    "priority": "Medium"
+  },
+  {
+    "id": "TC016",
+    "title": "Prevent registration with invalid age input",
+    "description": "This test verifies the registration form blocks clearly invalid age input and prompts the user to correct it.",
+    "category": "Patient Registration",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /register"
+      },
+      {
+        "type": "action",
+        "description": "Fill Patient Age into the name field"
+      },
+      {
+        "type": "action",
+        "description": "Fill abc into the age field"
+      },
+      {
+        "type": "action",
+        "description": "Fill Guillain-Barré syndrome into the condition field"
+      },
+      {
+        "type": "action",
+        "description": "Submit the registration form"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify an age validation error is displayed and the session is not created"
+      }
+    ],
+    "priority": "Medium"
+  },
+  {
+    "id": "TC017",
+    "title": "Prevent submission of empty phrase to speech synthesis",
+    "description": "This test verifies that attempting to synthesize speech with no selected phrase does not start playback and the UI indicates the action is invalid.",
+    "category": "Voice Synthesis (TTS)",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to the application home page"
+      },
+      {
+        "type": "action",
+        "description": "Complete patient registration with a valid name, age, and condition"
+      },
+      {
+        "type": "action",
+        "description": "Attempt to start speech output without selecting a phrase"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify a validation cue is shown and no audio playback starts"
+      }
+    ],
+    "priority": "Medium"
+  },
+  {
+    "id": "TC018",
+    "title": "Register with long condition text without breaking the flow",
+    "description": "This test verifies registration accepts a long but reasonable condition description and still creates a usable session.",
+    "category": "Patient Registration",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to /register"
+      },
+      {
+        "type": "action",
+        "description": "Fill Patient Long Condition into the name field"
+      },
+      {
+        "type": "action",
+        "description": "Fill a valid age into the age field"
+      },
+      {
+        "type": "action",
+        "description": "Fill a long multi-sentence condition description into the condition field"
+      },
+      {
+        "type": "action",
+        "description": "Submit the registration form"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the patient session is created successfully and the main patient app view is displayed"
+      }
+    ],
+    "priority": "Low"
+  }
+]

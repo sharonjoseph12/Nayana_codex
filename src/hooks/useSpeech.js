@@ -144,9 +144,14 @@ export function useSpeech() {
         // AbortError = a newer speak() call cancelled this one — do nothing
         if (error?.name === 'AbortError' || controller.signal.aborted) return;
 
-        console.warn('ElevenLabs error:', error);
+        const isQuotaError = /quota|401|403|api key/i.test(String(error?.message || ''));
+        
+        if (!isQuotaError) {
+           console.warn('ElevenLabs error:', error);
+        }
+        
         releaseCurrentAudio();
-        if (/not configured|401|403|api key/i.test(String(error?.message || ''))) {
+        if (isQuotaError) {
           setElevenLabsAvailable(false);
         }
         setIsSpeaking(false);

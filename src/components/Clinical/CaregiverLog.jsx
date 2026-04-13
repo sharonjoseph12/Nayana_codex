@@ -9,7 +9,7 @@ export default function CaregiverLog({ caregiverLog, setCaregiverLog }) {
   };
 
   return (
-    <section className="panel-elevated flex min-h-0 flex-col p-4">
+    <section className="panel-elevated flex flex-col p-4">
       <div className="mb-3 flex items-center justify-between">
         <div>
           <p className="text-xs uppercase tracking-[0.28em] text-white/45">Caregiver Log</p>

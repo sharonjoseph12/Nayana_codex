@@ -3,7 +3,7 @@ import { PATIENT } from '../constants/config';
 import { generateRiskAssessment } from '../services/gemini';
 import { buildRiskMessage, sendWhatsAppAlert } from '../services/whatsapp';
 
-export function useClinicalAI(clinicalLog) {
+export function useClinicalAI(clinicalLog, patient = null) {
   const [riskScore, setRiskScore] = useState(0);
   const [riskLevel, setRiskLevel] = useState('STABLE');
   const [riskReasoning, setRiskReasoning] = useState('No escalation indicators detected.');
@@ -57,7 +57,7 @@ export function useClinicalAI(clinicalLog) {
     }
 
     const patterns = analyzePatterns();
-    const assessment = await generateRiskAssessment(patterns);
+    const assessment = await generateRiskAssessment(patterns, patient);
 
     setRiskScore(assessment.score);
     setRiskLevel(assessment.level);
@@ -73,7 +73,7 @@ export function useClinicalAI(clinicalLog) {
       lastEscalationLevel.current = assessment.level;
       if (assessment.level === 'URGENT' || assessment.level === 'CRITICAL') {
         await sendWhatsAppAlert(
-          buildRiskMessage(PATIENT, assessment, new Date().toLocaleTimeString('en-IN'))
+          buildRiskMessage(patient || PATIENT, assessment, new Date().toLocaleTimeString('en-IN'))
         );
       }
     }

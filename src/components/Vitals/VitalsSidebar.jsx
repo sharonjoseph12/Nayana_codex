@@ -6,10 +6,10 @@ export default function VitalsSidebar({ vitals }) {
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-2 gap-3">
-        <VitalCard label="Heart Rate" value={vitals.heartRate} unit="BPM" tone="red" icon={Activity} />
-        <VitalCard label="Blink Rate" value={vitals.blinkRate} unit="/min" tone="cyan" icon={Eye} />
-        <VitalCard label="Focus" value={vitals.focusScore} unit="%" tone="emerald" icon={Brain} />
-        <VitalCard label="Stress" value={vitals.stressLevel} tone="violet" icon={Waves} />
+        <VitalCard label="Heart Rate" value={Math.round(vitals?.heartRate || 0)} unit="BPM" tone="red" icon={Activity} />
+        <VitalCard label="Blink Rate" value={Math.round(vitals?.blinkRate || 0)} unit="/min" tone="cyan" icon={Eye} />
+        <VitalCard label="Focus" value={Math.round(vitals?.focusScore || 0)} unit="%" tone="emerald" icon={Brain} />
+        <VitalCard label="Stress" value={vitals?.stressLevel || 'Stable'} tone="violet" icon={Waves} />
       </div>
     </div>
   );
@@ -17,12 +17,12 @@ export default function VitalsSidebar({ vitals }) {
 
 VitalsSidebar.propTypes = {
   vitals: PropTypes.shape({
-    heartRate: PropTypes.number.isRequired,
-    blinkRate: PropTypes.number.isRequired,
-    focusScore: PropTypes.number.isRequired,
-    stressLevel: PropTypes.string.isRequired,
-    alertStatus: PropTypes.string.isRequired,
-    sessionDuration: PropTypes.number.isRequired,
-    formatDuration: PropTypes.func.isRequired,
+    heartRate: PropTypes.number,
+    blinkRate: PropTypes.number,
+    focusScore: PropTypes.number,
+    stressLevel: PropTypes.string,
+    alertStatus: PropTypes.string,
+    sessionDuration: PropTypes.number,
+    formatDuration: PropTypes.func,
   }).isRequired,
 };

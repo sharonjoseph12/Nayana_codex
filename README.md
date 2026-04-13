@@ -1,8 +1,22 @@
+ 
+
+
+# Nayana (नयन)
+### AI-Powered Clinical Vision & Communication Platform
+
+
+**Empowering clinical communication through gaze intelligence.**
+
+
+## 👁️ Overview
+
+=======
 # Nayana (नयन)
 ### AI-Powered Clinical Vision & Communication Platform
 ## 👁️ Overview
 
 **Empowering clinical communication through gaze intelligence.**
+
 
 **Nayana** (meaning "Eye" or "Vision") is a high-fidelity clinical platform designed for patients with limited mobility or speech impairments. By leveraging state-of-the-art **Gaze Tracking AI**, Nayana transforms eye movements into meaningful communication and provides clinicians with a real-time telemetry dashboard for remote monitoring.
 
@@ -115,3 +129,4 @@ vercel deploy
 
 ## 📄 License
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details. (Default - update as per your project)
+

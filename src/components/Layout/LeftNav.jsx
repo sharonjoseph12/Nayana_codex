@@ -7,10 +7,14 @@ import {
   MapPin,
   Settings,
   Users,
+  Keyboard,
+  Heart,
 } from 'lucide-react';
 
 const NAV_ITEMS = [
   { id: 'dashboard', icon: Grid2x2, label: 'Dashboard' },
+  { id: 'keyboard', icon: Keyboard, label: 'Keyboard' },
+  { id: 'memory', icon: Heart, label: 'Memory Bridge' },
   { id: 'analytics', icon: BarChart2, label: 'Analytics' },
   { id: 'caregiver', icon: Users, label: 'Caregiver Hub' },
   { id: 'history', icon: Clock3, label: 'Session History' },
