@@ -1,25 +1,22 @@
-# ![Nayana Banner](./public/banner.png)
+ 
 
-<div align="center">
 
 # Nayana (नयन)
 ### AI-Powered Clinical Vision & Communication Platform
 
-[![Framework](https://img.shields.io/badge/Framework-React%2018-61DAFB?style=for-the-badge&logo=react)](https://react.dev/)
-[![Build Tool](https://img.shields.io/badge/Build-Vite-646CFF?style=for-the-badge&logo=vite)](https://vitejs.dev/)
-[![Styling](https://img.shields.io/badge/Styling-Tailwind%20CSS-38B2AC?style=for-the-badge&logo=tailwind-css)](https://tailwindcss.com/)
-[![Intelligence](https://img.shields.io/badge/AI-MediaPipe%20Vision-007ACC?style=for-the-badge&logo=google)](https://developers.google.com/mediapipe)
-[![Connectivity](https://img.shields.io/badge/Real--Time-WebRTC-FF6F00?style=for-the-badge&logo=webrtc)](https://peerjs.com/)
 
 **Empowering clinical communication through gaze intelligence.**
 
-[Overview](#-overview) • [Key Features](#-key-features) • [Tech Stack](#-tech-stack) • [System Architecture](#-system-architecture) • [Getting Started](#-getting-started)
-
-</div>
-
----
 
 ## 👁️ Overview
+
+=======
+# Nayana (नयन)
+### AI-Powered Clinical Vision & Communication Platform
+## 👁️ Overview
+
+**Empowering clinical communication through gaze intelligence.**
+
 
 **Nayana** (meaning "Eye" or "Vision") is a high-fidelity clinical platform designed for patients with limited mobility or speech impairments. By leveraging state-of-the-art **Gaze Tracking AI**, Nayana transforms eye movements into meaningful communication and provides clinicians with a real-time telemetry dashboard for remote monitoring.
 
@@ -133,9 +130,3 @@ vercel deploy
 ## 📄 License
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details. (Default - update as per your project)
 
----
-
-<div align="center">
-Built with ❤️ for humanity. <br/>
-<b>Nayana - The Future of Assistive Vision.</b>
-</div>
