@@ -8,6 +8,7 @@ const BottomBar = memo(function BottomBar({
   isDemoRunning, 
   signalQuality, 
   fps, 
+  isVitalsLive = false,
   onOpenStats 
 }) {
   return (
@@ -18,6 +19,10 @@ const BottomBar = memo(function BottomBar({
           fps={fps} 
           onClick={onOpenStats} 
         />
+        <div className={`flex items-center gap-1 rounded px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest ${isVitalsLive ? 'bg-stable-green/20 text-stable-green border border-stable-green/30' : 'bg-orange-500/10 text-orange-500 border border-orange-500/20'}`}>
+          <div className={`h-1.5 w-1.5 rounded-full ${isVitalsLive ? 'bg-stable-green animate-pulse' : 'bg-orange-500'}`} />
+          {isVitalsLive ? 'Live Sensor' : 'Simulated'}
+        </div>
         <div className="w-[1px] h-6 bg-white/5 mx-2 hidden md:block" />
         <div className="flex flex-wrap gap-2">
           {shortcuts.map((shortcut) => (
@@ -40,5 +45,6 @@ BottomBar.propTypes = {
   isDemoRunning: PropTypes.bool.isRequired,
   signalQuality: PropTypes.number.isRequired,
   fps: PropTypes.number.isRequired,
+  isVitalsLive: PropTypes.bool,
   onOpenStats: PropTypes.func.isRequired,
 };

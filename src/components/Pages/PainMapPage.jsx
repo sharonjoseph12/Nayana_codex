@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import PropTypes from 'prop-types';
 import { Activity, AlertTriangle, ChevronRight, Activity as Pulse } from 'lucide-react';
 
-export default function PainMapPage({ currentLanguage, onPhraseSelect, painLog, setPainLog }) {
+export default function PainMapPage({ currentLanguage, onPhraseSelect, painLog, setPainLog, onAddClinicalEntry }) {
   const [selectedPart, setSelectedPart] = useState(null);
   const [intensity, setIntensity] = useState(5);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -36,6 +36,18 @@ export default function PainMapPage({ currentLanguage, onPhraseSelect, painLog, 
     setIsGenerating(true);
     const newEntry = { part: selectedPart.id, label: selectedPart.label, intensity, timestamp: Date.now() };
     setPainLog((previous) => [...previous, newEntry]);
+
+    // Bridge to clinical log so risk AI and session history see pain events
+    if (onAddClinicalEntry) {
+      onAddClinicalEntry({
+        quadrant: 'Medical',
+        phrase: `Pain — ${selectedPart.label} (${intensity}/10)`,
+        sentence: `I am experiencing ${intensity >= 7 ? 'severe' : intensity >= 4 ? 'moderate' : 'mild'} pain in my ${selectedPart.label.toLowerCase()}, intensity ${intensity} out of 10.`,
+        color: intensity >= 7 ? '#ff3d5a' : intensity >= 4 ? '#f59e0b' : '#00D1FF',
+        category: 'PAIN',
+        severity: Math.ceil(intensity / 2),
+      });
+    }
     
     await onPhraseSelect('Medical', `Pain in ${selectedPart.label} - intensity ${intensity}/10`, {
       forceSpeak: true,
@@ -164,4 +176,5 @@ PainMapPage.propTypes = {
   onPhraseSelect: PropTypes.func.isRequired,
   painLog: PropTypes.arrayOf(PropTypes.object).isRequired,
   setPainLog: PropTypes.func.isRequired,
+  onAddClinicalEntry: PropTypes.func,
 };

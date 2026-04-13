@@ -158,12 +158,23 @@ export default function GazeEngine({ faceDetected, onGazeUpdate, onError, isEnab
             irisY: (lp.y + rp.y) / 2
           };
 
-          onGazeUpdateRef.current?.({ 
-            irisX: eyesRef.current.irisX, 
-            irisY: eyesRef.current.irisY,
-            stability: 0.95,
-            health: brightness < 40 ? 'Fair' : 'Excellent'
-          });
+          const ix = eyesRef.current.irisX;
+          const iy = eyesRef.current.irisY;
+
+          // Validate Signal Health (Avoid center-screen ghosting on initialization)
+          if (typeof ix === 'number' && typeof iy === 'number' && !isNaN(ix) && !isNaN(iy)) {
+            onGazeUpdateRef.current?.({ 
+              gaze: {
+                x: ix * window.innerWidth,
+                y: iy * window.innerHeight
+              },
+              irisX: ix, 
+              irisY: iy,
+              stability: 0.95,
+              health: brightness < 40 ? 'Fair' : 'Excellent',
+              confidence: 0.95
+            });
+          }
         } else {
           eyesRef.current = null;
           // Notify Caregiver Hub of occlusion
@@ -248,7 +259,8 @@ export default function GazeEngine({ faceDetected, onGazeUpdate, onError, isEnab
 
   return (
     <div style={{
-      position: 'fixed', bottom: '80px', left: '16px',
+      position: 'fixed', top: '16px', left: '50%',
+      transform: 'translateX(-50%)',
       width: '120px', height: '90px', borderRadius: '12px',
       overflow: 'hidden', border: '1px solid rgba(0,212,255,0.3)',
       zIndex: 50, background: '#080c10',

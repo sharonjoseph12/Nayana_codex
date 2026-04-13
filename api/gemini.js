@@ -26,7 +26,7 @@ export default async (req, res) => {
     return res.status(500).json({ error: 'GEMINI_API_KEY is not configured on the server' });
   }
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${process.env.GEMINI_API_KEY}`;
+  const url = `https://generativelanguage.googleapis.com/v1/models/${GEMINI_MODEL}:generateContent?key=${process.env.GEMINI_API_KEY}`;
 
   const requestBody = {
     contents: [{ parts: [{ text: prompt }] }],

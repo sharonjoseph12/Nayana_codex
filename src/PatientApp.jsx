@@ -11,7 +11,9 @@ import SOSModal from './components/Modals/SOSModal';
 import ReportModal from './components/Modals/ReportModal';
 import VoiceSetupModal from './components/Modals/VoiceSetupModal';
 import HardwareStatsModal from './components/Modals/HardwareStatsModal';
+import HandoverReportModal from './components/Modals/HandoverReportModal';
 import GazeReticle from './components/Tracking/GazeReticle';
+import { Star } from 'lucide-react';
 import GazeEngine from './components/Tracking/GazeEngine';
 import CalibrationScreen from './components/Tracking/CalibrationScreen';
 import SOSAnchor from './components/Tracking/SOSAnchor';
@@ -26,7 +28,7 @@ import MemoryPage from './components/Pages/MemoryPage';
 import FamilyPortalPage from './components/Pages/FamilyPortalPage';
 import NeuralBackground from './components/NeuralBackground';
 import { useGazeTracking } from './hooks/useGazeTracking';
-import { useVitals } from './hooks/useVitals';
+import useRealVitals from './hooks/useRealVitals';
 import { useSpeech } from './hooks/useSpeech';
 import { useClinicalAI } from './hooks/useClinicalAI';
 import { useCaregiverAlerts } from './hooks/useCaregiverAlerts';
@@ -44,14 +46,15 @@ import { useClinicalMemory } from './hooks/useClinicalMemory';
 import { usePredictiveAI } from './hooks/usePredictiveAI';
 import { sentinelEngine } from './services/sentinelEngine';
 
-// Initialize Global Tab ID for isolation
-if (typeof window !== 'undefined' && !window.__nayana_tab_id) {
-  window.__nayana_tab_id = Math.random().toString(36).substring(7);
-}
 import { buildPDFHTML } from './services/pdf';
 import { buildEmotionMessage, buildSOSMessage, buildRiskMessage, sendWhatsAppAlert } from './services/whatsapp';
 import { webrtcManager } from './services/webrtc';
 import { Heart } from 'lucide-react';
+
+// Initialize Global Tab ID for isolation
+if (typeof window !== 'undefined' && !window.__nayana_tab_id) {
+  window.__nayana_tab_id = Math.random().toString(36).substring(7);
+}
 
 const elevenLabsAvailable = !!import.meta.env.VITE_ELEVENLABS_API_KEY;
 
@@ -65,14 +68,23 @@ export default function PatientApp() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [theme, setTheme] = useState('default');
   const [wellbeingScore, setWellbeingScore] = useState(100);
-  const [painLog, setPainLog] = useState([]);
   const [showHardwareStats, setShowHardwareStats] = useState(false);
   const [showFamilyHug, setShowFamilyHug] = useState(false);
-  
+  const [showHandoverModal, setShowHandoverModal] = useState(false);
+  const [handoverReportText, setHandoverReportText] = useState('');
+  const [handoverGenerating, setHandoverGenerating] = useState(false);
+
   const deferredSentence = useDeferredValue(generatedSentence);
   const deferredGenerating = useDeferredValue(isGenerating);
 
   const [conversationHistory, setConversationHistory] = useState([]);
+  const [painLog, setPainLog] = useState([]);
+  const [favorites, setFavorites] = useState(() => {
+    try {
+      const key = `nayana_favs_${patient?.room || 'default'}`;
+      return JSON.parse(localStorage.getItem(key) || '[]');
+    } catch { return []; }
+  });
   const { caregiverLog, clinicalLog, updateLog, setMemory } = useClinicalMemory(patient.room);
 
   const setCaregiverLog = useCallback((newLog) => {
@@ -90,6 +102,7 @@ export default function PatientApp() {
   const [dwellTime, setDwellTime] = useState(1800);
   const [toasts, setToasts] = useState([]);
   const [trackingEnabled, setTrackingEnabled] = useState(true);
+  const [showGazeReticle, setShowGazeReticle] = useState(true);
   const [visionRefresh, setVisionRefresh] = useState(0);
 
   const refreshVision = useCallback(() => {
@@ -98,9 +111,11 @@ export default function PatientApp() {
     setTimeout(() => setTrackingEnabled(true), 100);
   }, []);
 
-  const vitals = useVitals();
+  const [densityMode, setDensityMode] = useState('normal');
+
+  const { vitals, isLive: isVitalsLive, connectBLE, disconnectBLE } = useRealVitals(true);
   const { isSpeaking, isMuted, autoSpeak, speak, cancelSpeech, toggleMute, setAutoSpeak, voiceMode, setVoiceMode } = useSpeech();
-  const clinicalAI = useClinicalAI(clinicalLog);
+  const clinicalAI = useClinicalAI({ vitals, patient });
   const { sendManagedAlert } = useCaregiverAlerts();
   const { suggestions: aiSuggestions } = usePredictiveAI(clinicalLog, vitals);
 
@@ -158,15 +173,56 @@ export default function PatientApp() {
     setSosActive(true);
     addCaregiverEntry('Emergency', safeReason, '#ff3d5a', { acknowledged: false, phrase: 'SOS', sentence: safeReason });
     await sendManagedAlert('sos', buildSOSMessage(patient, new Date().toLocaleTimeString('en-IN')));
-    speak('Emergency alert has been triggered.'); showToast('SOS alert sent', 'warning');
+    speak('Emergency alert has been triggered.'); 
+    showToast('SOS alert sent', 'warning');
   }, [addCaregiverEntry, patient, sendManagedAlert, showToast, speak]);
+  // Persist conversationHistory and painLog to localStorage
+  useEffect(() => {
+    try {
+      const key = `nayana_conv_${patient.room}_${new Date().toDateString()}`;
+      localStorage.setItem(key, JSON.stringify(conversationHistory));
+    } catch {}
+  }, [conversationHistory, patient.room]);
+
+  useEffect(() => {
+    try {
+      const key = `nayana_pain_${patient.room}_${new Date().toDateString()}`;
+      localStorage.setItem(key, JSON.stringify(painLog));
+    } catch {}
+  }, [painLog, patient.room]);
+
+  useEffect(() => {
+    try {
+      const key = `nayana_favs_${patient.room}`;
+      localStorage.setItem(key, JSON.stringify(favorites));
+    } catch {}
+  }, [favorites, patient.room]);
+
+  // Inactivity auto-alert — fires after 5 minutes of no patient interaction
+  const inactivityAlertedRef = useRef(false);
+  useEffect(() => {
+    const INACTIVITY_MS = 5 * 60 * 1000; // 5 minutes
+    const check = setInterval(() => {
+      const elapsed = Date.now() - lastInteractionAt;
+      if (elapsed > INACTIVITY_MS && !inactivityAlertedRef.current && !sosActive) {
+        inactivityAlertedRef.current = true;
+        showToast('⚠ No patient interaction for 5 min — check patient', 'warning');
+        sendWhatsAppAlert(buildEmotionMessage(patient, 'No interaction detected', new Date().toLocaleTimeString('en-IN')));
+      }
+      if (elapsed < INACTIVITY_MS) {
+        inactivityAlertedRef.current = false; // reset if patient becomes active again
+      }
+    }, 30000); // check every 30s
+    return () => clearInterval(check);
+  }, [lastInteractionAt, patient, showToast, sosActive]);
+
 
   const handlePhraseSelect = async (quadrant, phrase, options = {}) => {
     if (isGenerating) return;
     setSelectedQuadrant(quadrant); setLastSelectedPhraseKey(`${quadrant}-${phrase}`);
     setIsGenerating(true); setLastInteractionAt(Date.now());
     try {
-      const result = await generateSentence(quadrant, phrase, currentLanguage, conversationHistory, { heartRate: vitals.heartRate, caregiver: patient.caregiver, room: patient.room });
+      const result = await generateSentence(quadrant, phrase, currentLanguage, conversationHistory, { heartRate: vitals.heartRate, caregiver: patient.caregiver, room: patient.room, patient });
       if (result.text) {
         setGeneratedSentence(result.text); setConversationHistory((prev) => [{ sentence: result.text }, ...prev].slice(0, 50));
         addCaregiverEntry(quadrant, `${quadrant} -> ${phrase}`, QUADRANT_CONFIG[quadrant]?.color, { phrase, sentence: result.text });
@@ -175,6 +231,15 @@ export default function PatientApp() {
       }
     } catch {} finally { setIsGenerating(false); }
   };
+
+  const toggleFavorite = useCallback((phraseLabel) => {
+    setFavorites(prev => 
+      prev.includes(phraseLabel) 
+        ? prev.filter(f => f !== phraseLabel) 
+        : [...prev, phraseLabel]
+    );
+    showToast(favorites.includes(phraseLabel) ? "Removed from Pinned" : "Pinned to Top", "info");
+  }, [favorites, showToast]);
 
   const handleCustomSentenceComplete = useCallback((text) => {
     if (!text.trim()) return;
@@ -208,7 +273,23 @@ export default function PatientApp() {
     }
   }, [vitals, caregiverLog, clinicalLog, clinicalAI, patient, emotionDetection, wellbeingScore, sentinelReport, lastInteractionAt]);
 
-  const handleLogin = (patientData) => { setPatient(patientData); setIsLoggedIn(true); };
+  const handleLogin = (patientData) => {
+    setPatient(patientData);
+    setIsLoggedIn(true);
+    // Restore persisted data for this patient's room+day
+    try {
+      const convKey = `nayana_conv_${patientData.room}_${new Date().toDateString()}`;
+      const painKey = `nayana_pain_${patientData.room}_${new Date().toDateString()}`;
+      const savedConv = JSON.parse(localStorage.getItem(convKey) || '[]');
+      const savedPain = JSON.parse(localStorage.getItem(painKey) || '[]');
+      if (savedConv.length) setConversationHistory(savedConv);
+      if (savedPain.length) setPainLog(savedPain);
+      
+      const favKey = `nayana_favs_${patientData.room}`;
+      const savedFavs = JSON.parse(localStorage.getItem(favKey) || '[]');
+      setFavorites(savedFavs);
+    } catch {}
+  };
   
   const handleVisionError = useCallback((err) => {
     if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
@@ -244,6 +325,20 @@ export default function PatientApp() {
     }
   };
 
+  const handleGenerateHandoverReport = useCallback(async () => {
+    setShowHandoverModal(true);
+    setHandoverGenerating(true);
+    setHandoverReportText('');
+    try {
+      const text = await generateHandoverReport(clinicalLog, vitals, clinicalAI, patient);
+      setHandoverReportText(text);
+    } catch {
+      setHandoverReportText('Report generation failed. Please try again.');
+    } finally {
+      setHandoverGenerating(false);
+    }
+  }, [clinicalLog, vitals, clinicalAI, patient]);
+
   if (!isLoggedIn) return <LoginPage onLogin={handleLogin} />;
 
   return (
@@ -259,7 +354,14 @@ export default function PatientApp() {
         </div>
       )}
 
-      <GazeReticle position={gazePosition} trail={gazeTrail} dwellingOn={dwellingOn} dwellProgress={dwellProgress} isLocked={isLocked} />
+        <GazeReticle 
+          position={gazePosition} 
+          trail={gazeTrail} 
+          dwellingOn={dwellingOn} 
+          dwellProgress={dwellProgress} 
+          isLocked={isLocked} 
+          isVisible={showGazeReticle}
+        />
       <TopBar 
         patient={patient} 
         currentLanguage={currentLanguage} 
@@ -289,7 +391,22 @@ export default function PatientApp() {
         <div className="flex min-w-0 flex-1 flex-col overflow-x-hidden">
           {activePage === 'dashboard' && (
             <div className="flex h-full flex-col">
-              <div className="flex-1 overflow-y-auto"><QuadrantGrid selectedQuadrant={selectedQuadrant} dwellingOn={dwellingOn} dwellProgress={dwellProgress} isLocked={isLocked} onQuadrantSelect={setSelectedQuadrant} onPhraseSelect={handlePhraseSelect} translations={TRANSLATIONS[currentLanguage]} densityMode="normal" lastSelectedPhrase={lastSelectedPhraseKey} aiSuggestions={aiSuggestions} /></div>
+              <div className="flex-1 overflow-y-auto">
+                <QuadrantGrid 
+                  selectedQuadrant={selectedQuadrant} 
+                  dwellingOn={dwellingOn} 
+                  dwellProgress={dwellProgress} 
+                  isLocked={isLocked} 
+                  onQuadrantSelect={setSelectedQuadrant} 
+                  onPhraseSelect={handlePhraseSelect} 
+                  translations={TRANSLATIONS[currentLanguage]} 
+                  densityMode={densityMode} 
+                  lastSelectedPhrase={lastSelectedPhraseKey} 
+                  aiSuggestions={aiSuggestions}
+                  favorites={favorites}
+                  onToggleFavorite={toggleFavorite}
+                />
+              </div>
               <SpeechOutput 
                 sentence={deferredSentence} 
                 isGenerating={deferredGenerating} 
@@ -310,10 +427,10 @@ export default function PatientApp() {
           {activePage === 'keyboard' && <KeyboardPage dwellingOn={dwellingOn} dwellProgress={dwellProgress} onSentenceComplete={handleCustomSentenceComplete} />}
           {activePage === 'memory' && <MemoryPage dwellingOn={dwellingOn} dwellProgress={dwellProgress} speak={speak} />}
           {activePage === 'analytics' && <AnalyticsPage clinicalLog={clinicalLog} vitals={vitals} clinicalAI={clinicalAI} conversationHistory={conversationHistory} />}
-          {activePage === 'caregiver' && <CaregiverHubPage caregiverLog={caregiverLog} setCaregiverLog={() => {}} clinicalLog={clinicalLog} vitals={vitals} clinicalAI={clinicalAI} showToast={showToast} speak={speak} currentLanguage={currentLanguage} onAddCaregiverEntry={addCaregiverEntry} lastInteractionAt={lastInteractionAt} onSendHug={() => cloudSync.sendFamilyHug(patient.room)} sentiment={emotionDetection} wellbeingScore={wellbeingScore} />}
+          {activePage === 'caregiver' && <CaregiverHubPage caregiverLog={caregiverLog} setCaregiverLog={setCaregiverLog} clinicalLog={clinicalLog} vitals={vitals} clinicalAI={clinicalAI} showToast={showToast} speak={speak} currentLanguage={currentLanguage} onAddCaregiverEntry={addCaregiverEntry} lastInteractionAt={lastInteractionAt} onSendHug={() => cloudSync.sendFamilyHug(patient.room)} sentiment={emotionDetection} wellbeingScore={wellbeingScore} />}
           {activePage === 'family' && <FamilyPortalPage patient={patient} sentiment={emotionDetection} wellbeingScore={wellbeingScore} lastInteractionAt={lastInteractionAt} onSendHug={() => cloudSync.sendFamilyHug(patient.room)} />}
           {activePage === 'history' && <SessionHistoryPage clinicalLog={clinicalLog} vitals={vitals} clinicalAI={clinicalAI} />}
-          {activePage === 'painmap' && <PainMapPage currentLanguage={currentLanguage} onPhraseSelect={handlePhraseSelect} painLog={painLog} setPainLog={setPainLog} />}
+          {activePage === 'painmap' && <PainMapPage currentLanguage={currentLanguage} onPhraseSelect={handlePhraseSelect} painLog={painLog} setPainLog={setPainLog} onAddClinicalEntry={(entry) => addCaregiverEntry(entry.quadrant, entry.phrase, entry.color, { phrase: entry.phrase, sentence: entry.sentence })} />}
           {activePage === 'settings' && (
             <SettingsPage 
               currentLanguage={currentLanguage} 
@@ -327,6 +444,12 @@ export default function PatientApp() {
               trackingMode={trackingMode}
               startEyeTracking={startEyeTracking}
               stopEyeTracking={stopEyeTracking}
+              patient={patient}
+              isVitalsLive={isVitalsLive}
+              connectBLE={connectBLE}
+              disconnectBLE={disconnectBLE}
+              showGazeReticle={showGazeReticle}
+              setShowGazeReticle={setShowGazeReticle}
             />
           )}
         </div>
@@ -343,7 +466,7 @@ export default function PatientApp() {
               clinicalLog={clinicalLog} 
               presentationMode={presentationMode} 
               setPresentationMode={setPresentationMode} 
-              onGenerateReport={() => showToast("Final Handover Report Generated", "success")}
+              onGenerateReport={handleGenerateHandoverReport}
               onDownloadPDF={handlePDFExport}
               onTestWhatsApp={() => sendWhatsAppAlert(buildSOSMessage(patient, new Date().toLocaleTimeString()))}
               onRunRiskAssessment={() => showToast("AI Risk Engine Re-calibrated", "success")}
@@ -351,8 +474,13 @@ export default function PatientApp() {
           </div>
         )}
       </div>
-      <BottomBar isDemoRunning={false} signalQuality={signalQuality} fps={fps} onOpenStats={() => setShowHardwareStats(true)} />
-      <GazeEngine key={visionRefresh} faceDetected={faceDetected} onGazeUpdate={handleIrisUpdate} onError={handleVisionError} isEnabled={trackingEnabled} />
+        <BottomBar 
+          isDemoRunning={presentationMode} 
+          signalQuality={signalQuality} 
+          fps={fps} 
+          isVitalsLive={isVitalsLive}
+          onOpenStats={() => setShowHardwareStats(true)} 
+        /><GazeEngine key={visionRefresh} faceDetected={faceDetected} onGazeUpdate={handleIrisUpdate} onError={handleVisionError} isEnabled={trackingEnabled} />
       
       {/* 🚀 Phase 37 Toast Stack */}
       <div className="fixed top-24 left-1/2 z-[200] flex -translate-x-1/2 flex-col gap-2 pointer-events-none">
@@ -379,6 +507,13 @@ export default function PatientApp() {
         ))}
       </div>
       <HardwareStatsModal open={showHardwareStats} onClose={() => setShowHardwareStats(false)} fps={fps} signalQuality={signalQuality} gazeAccuracy={gazeAccuracy} />
+      <HandoverReportModal
+        open={showHandoverModal}
+        onClose={() => setShowHandoverModal(false)}
+        patient={patient}
+        reportText={handoverReportText}
+        isGenerating={handoverGenerating}
+      />
       <CalibrationScreen open={trackingMode === 'eye' && !isCalibrated} onSkip={() => setTrackingMode('mouse')} />
       {!presentationMode && !sosActive && <SOSAnchor onTrigger={triggerSOS} dwellingOn={dwellingOn} dwellProgress={dwellProgress} />}
     </div>

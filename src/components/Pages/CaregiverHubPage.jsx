@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import PropTypes from 'prop-types';
-import { LayoutGrid, AlertCircle, LogOut, Search, UserCheck, ShieldAlert, Lock, Unlock, TrendingUp, Activity, WifiOff, Sparkles, Heart, Map as MapIcon, ChevronRight, User } from 'lucide-react';
+import { LayoutGrid, AlertCircle, LogOut, Search, UserCheck, ShieldAlert, Lock, Unlock, TrendingUp, Activity, WifiOff, Sparkles, Heart, Map as MapIcon, ChevronRight, User, Pill, Clock, Plus, Trash2, Check } from 'lucide-react';
 import { PATIENT } from '../../constants/config';
 import { sendWhatsAppAlert } from '../../services/whatsapp';
 import BedsideCard from '../Clinical/BedsideCard';
@@ -34,6 +34,14 @@ export default function CaregiverHubPage({
   const [bedsideSentiments, setBedsideSentiments] = useState({}); 
   const [bedsideWellbeing, setBedsideWellbeing] = useState({}); // { [roomId]: score }
 
+  // Medication reminders state
+  const [medReminders, setMedReminders] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('nayana_med_reminders') || '[]'); } catch { return []; }
+  });
+  const [medForm, setMedForm] = useState({ name: '', dueTime: '' });
+  const [showMedForm, setShowMedForm] = useState(false);
+  const medCheckRef = useRef(null);
+
   useEffect(() => {
     const unsubscribe = cloudSync.subscribe((data) => {
       const rId = data.roomId || data.patient?.room || 'icu-7';
@@ -54,6 +62,38 @@ export default function CaregiverHubPage({
     const watchdogInterval = setInterval(() => { setBedsideStatus(prev => ({ ...prev })); }, 5000);
     return () => { unsubscribe(); clearInterval(watchdogInterval); };
   }, []);
+
+  // Medication reminder watchdog
+  useEffect(() => {
+    localStorage.setItem('nayana_med_reminders', JSON.stringify(medReminders));
+    if (medCheckRef.current) clearInterval(medCheckRef.current);
+    medCheckRef.current = setInterval(() => {
+      const now = new Date();
+      const hhmm = now.toTimeString().slice(0, 5); // 'HH:MM'
+      setMedReminders(prev => prev.map(r => {
+        if (!r.fired && r.dueTime === hhmm) {
+          showToast?.(`💊 Medication due: ${r.name}`, 'warning');
+          const patientName = patientInfoOverride?.name || 'Patient';
+          const room = patientInfoOverride?.room || 'ICU';
+          sendWhatsAppAlert(`NAYANA MED REMINDER\n\nPatient: ${patientName} | Room: ${room}\nMedication: ${r.name}\nDue Time: ${r.dueTime}\n\nPlease administer medication now.`);
+          return { ...r, fired: true };
+        }
+        return r;
+      }));
+    }, 15000); // check every 15s
+    return () => clearInterval(medCheckRef.current);
+  }, [medReminders, showToast, patientInfoOverride]);
+
+  const addMedReminder = () => {
+    if (!medForm.name.trim() || !medForm.dueTime) return;
+    const newReminder = { id: Date.now(), name: medForm.name.trim(), dueTime: medForm.dueTime, fired: false, createdAt: new Date().toISOString() };
+    setMedReminders(prev => [...prev, newReminder]);
+    setMedForm({ name: '', dueTime: '' });
+    setShowMedForm(false);
+    showToast?.(`Reminder set: ${medForm.name} at ${medForm.dueTime}`, 'success');
+  };
+
+  const removeMedReminder = (id) => setMedReminders(prev => prev.filter(r => r.id !== id));
 
   const handlePinSubmit = () => {
     if (pin === '1234') { setIsLocked(false); showToast('Terminal Unlocked', 'success'); }
@@ -115,6 +155,74 @@ export default function CaregiverHubPage({
 
          <div className="flex flex-col gap-6 shrink-0">
             <WardTriageWidget bedsideSentiments={bedsideSentiments} patients={{ 'icu-7': patientData, ...MOCK_PATIENTS }} />
+
+            {/* Medication Reminders Panel */}
+            <div className="rounded-[24px] border border-white/[0.06] bg-[#0f0f0f] p-5">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <Pill size={14} className="text-[#bf80ff]" />
+                  <h3 className="text-[10px] font-bold text-white/40 uppercase tracking-widest">Medication Reminders</h3>
+                </div>
+                <button
+                  onClick={() => setShowMedForm(prev => !prev)}
+                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[#bf80ff]/10 border border-[#bf80ff]/20 text-[#bf80ff] text-[10px] font-bold uppercase tracking-widest hover:bg-[#bf80ff]/20 transition-all"
+                >
+                  <Plus size={11} /> Add
+                </button>
+              </div>
+
+              {showMedForm && (
+                <div className="mb-4 flex flex-col gap-2 p-3 rounded-xl border border-white/[0.06] bg-white/[0.02]">
+                  <input
+                    type="text"
+                    placeholder="Medication name…"
+                    value={medForm.name}
+                    onChange={e => setMedForm(prev => ({ ...prev, name: e.target.value }))}
+                    className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-white placeholder-white/20 outline-none focus:border-[#bf80ff]/30"
+                  />
+                  <input
+                    type="time"
+                    value={medForm.dueTime}
+                    onChange={e => setMedForm(prev => ({ ...prev, dueTime: e.target.value }))}
+                    className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-white outline-none focus:border-[#bf80ff]/30"
+                    style={{ colorScheme: 'dark' }}
+                  />
+                  <button
+                    onClick={addMedReminder}
+                    disabled={!medForm.name.trim() || !medForm.dueTime}
+                    className="w-full py-2 rounded-lg bg-[#bf80ff]/15 border border-[#bf80ff]/30 text-[#bf80ff] text-[10px] font-bold uppercase tracking-widest hover:bg-[#bf80ff]/25 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                  >
+                    Set Reminder
+                  </button>
+                </div>
+              )}
+
+              <div className="space-y-2">
+                {medReminders.length === 0 ? (
+                  <p className="text-center text-[10px] text-white/15 py-4 font-mono uppercase">No reminders set</p>
+                ) : (
+                  medReminders.slice().reverse().map(r => (
+                    <div key={r.id} className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${
+                      r.fired ? 'border-stable-green/20 bg-stable-green/[0.03] opacity-50' : 'border-white/[0.06] bg-white/[0.02]'
+                    }`}>
+                      <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full border ${
+                        r.fired ? 'border-stable-green/30 bg-stable-green/10' : 'border-[#bf80ff]/20 bg-[#bf80ff]/5'
+                      }`}>
+                        {r.fired ? <Check size={12} className="text-stable-green" /> : <Clock size={12} className="text-[#bf80ff]" />}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs font-bold text-white truncate">{r.name}</div>
+                        <div className="text-[10px] font-mono text-white/30 mt-0.5">{r.dueTime} {r.fired && '· Done'}</div>
+                      </div>
+                      <button onClick={() => removeMedReminder(r.id)} className="text-white/15 hover:text-emergency transition-colors">
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
             {view === 'detail' && (
                <div className="bg-[#121212] border border-white/5 rounded-[32px] p-6">
                   <h3 className="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-4">Psychological Pulse</h3>

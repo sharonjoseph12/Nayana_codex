@@ -62,7 +62,7 @@ export default function SessionHistoryPage({ clinicalLog, vitals, clinicalAI }) 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
           { label: 'Total Communications', value: clinicalLog.length, color: 'text-medical', icon: MessageSquare },
-          { label: 'Session Duration', value: vitals.formatDuration(vitals.sessionDuration), color: 'text-[#bf80ff]', icon: Clock },
+          { label: 'Session Duration', value: vitals.formatDuration ? vitals.formatDuration(vitals.sessionDuration) : '00:00', color: 'text-[#bf80ff]', icon: Clock },
           { label: 'Risk Indices', value: `${clinicalAI.riskScore}/100`, color: getRiskColor(clinicalAI.riskScore), icon: ShieldAlert },
           { label: 'Priority Zone', value: getMostUsed(clinicalLog), color: 'text-warning', icon: Zap },
         ].map((stat, idx) => (
@@ -136,6 +136,9 @@ export default function SessionHistoryPage({ clinicalLog, vitals, clinicalAI }) 
 
 SessionHistoryPage.propTypes = {
   clinicalLog: PropTypes.arrayOf(PropTypes.object).isRequired,
-  vitals: PropTypes.object.isRequired,
+  vitals: PropTypes.shape({
+    sessionDuration: PropTypes.number,
+    formatDuration: PropTypes.func,
+  }).isRequired,
   clinicalAI: PropTypes.object.isRequired,
 };

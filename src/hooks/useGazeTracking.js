@@ -19,9 +19,17 @@ export function useGazeTracking({ onQuadrantSelect, onPhraseSelect, onSOSTrigger
   const [gazeTrail, setGazeTrail] = useState([]);
 
   const elementsRef = useRef({});
+  const smoothedGazeRef = useRef({ x: 0, y: 0 });
   const dwellTimerRef = useRef(null);
   const frameCountRef = useRef(0);
   const lastFpsUpdateRef = useRef(Date.now());
+  const rawGazeHistoryRef = useRef([]); // Last 12 raw samples for Ultra-Precision WMA window
+
+  const JITTER_THRESHOLD = 12; // pixels - ultra-heavy stillness zone
+  const VELOCITY_CLAMP = 40;   // pixels per frame - prevents jumping artifacts
+  const ALPHA_MIN = 0.04;    // Liquid smoothness floor
+  const ALPHA_MAX = 0.75;    // High responsiveness for large jumps
+  const ALPHA_MOUSE = 0.85;  // Higher responsiveness for mouse simulation
 
   // FPS & Quality Tracking
   const updateFidelity = useCallback((confidence) => {
@@ -47,28 +55,78 @@ export function useGazeTracking({ onQuadrantSelect, onPhraseSelect, onSOSTrigger
   const handleIrisUpdate = useCallback((data) => {
     if (!data) {
       setFaceDetected(false);
+      setGazeTrail([]); // Clear trail on signal loss
       updateFidelity(0);
       return;
     }
 
     setFaceDetected(true);
-    setGazePosition(data.gaze);
-    setHeadPosition(data.head);
-    setGazeAccuracy(data.accuracy);
+    setHeadPosition(data.head || { x: 0, y: 0, z: 0 });
+    setGazeAccuracy(data.accuracy || 100);
     updateFidelity(data.confidence || 0.95);
 
-    // Gaze Trail
-    setGazeTrail((prev) => [{ ...data.gaze, id: Date.now() }, ...prev.slice(0, 15)]);
+    // --- Phase 45: Ultra-Precision Weighted Moving Average (12-frame window) ---
+    if (!data.gaze) return; // Guard against missing iris data
+    rawGazeHistoryRef.current = [{ x: data.gaze.x, y: data.gaze.y }, ...rawGazeHistoryRef.current.slice(0, 11)];
+    
+    let weightSum = 0;
+    const wma = rawGazeHistoryRef.current.reduce((acc, p, i) => {
+      const weight = rawGazeHistoryRef.current.length - i;
+      weightSum += weight;
+      return { x: acc.x + p.x * weight, y: acc.y + p.y * weight };
+    }, { x: 0, y: 0 });
+    
+    let rawX = wma.x / weightSum;
+    let rawY = wma.y / weightSum;
+    
+    const prev = smoothedGazeRef.current;
+    
+    // --- Phase 46: Velocity Clamping ---
+    // Prevents "jumping" when the vision sensor loses track momentarily
+    const deltaX = rawX - prev.x;
+    const deltaY = rawY - prev.y;
+    const rawDist = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+    
+    if (rawDist > VELOCITY_CLAMP) {
+      const scale = VELOCITY_CLAMP / rawDist;
+      rawX = prev.x + deltaX * scale;
+      rawY = prev.y + deltaY * scale;
+    }
+    
+    const dist = Math.sqrt(Math.pow(rawX - prev.x, 2) + Math.pow(rawY - prev.y, 2));
+    let nextX = prev.x;
+    let nextY = prev.y;
+
+    if (dist > JITTER_THRESHOLD) {
+      // Quadratic Acceleration: (dist/400)^2 provides massive speed for jumps, stability for selection.
+      // Dwell-Aware Lock: Dropping alpha to 0.03 when dwelling on an element for rigid stability.
+      const baseAlpha = dwellingOn ? 0.03 : (ALPHA_MIN + Math.pow(dist / 400, 2));
+      
+      const adaptiveAlpha = trackingMode === 'mouse' 
+        ? ALPHA_MOUSE 
+        : Math.min(ALPHA_MAX, baseAlpha * (data.confidence || 0.95));
+      
+      nextX = prev.x * (1 - adaptiveAlpha) + rawX * adaptiveAlpha;
+      nextY = prev.y * (1 - adaptiveAlpha) + rawY * adaptiveAlpha;
+    }
+
+    smoothedGazeRef.current = { x: nextX, y: nextY };
+    setGazePosition({ x: nextX, y: nextY });
+
+    // Gaze Trail - Only add if position is non-zero
+    if (nextX !== 0 && nextY !== 0) {
+      setGazeTrail((prevTrail) => [{ x: nextX, y: nextY, id: performance.now() + Math.random() }, ...prevTrail.slice(0, 15)]);
+    }
 
     const hovered = Object.values(elementsRef.current).find((el) => {
       const domEl = document.getElementById(el.id);
       if (!domEl) return false;
       const rect = domEl.getBoundingClientRect();
       return (
-        data.gaze.x >= rect.left &&
-        data.gaze.x <= rect.right &&
-        data.gaze.y >= rect.top &&
-        data.gaze.y <= rect.bottom
+        nextX >= rect.left &&
+        nextX <= rect.right &&
+        nextY >= rect.top &&
+        nextY <= rect.bottom
       );
     });
 
@@ -114,7 +172,26 @@ export function useGazeTracking({ onQuadrantSelect, onPhraseSelect, onSOSTrigger
   const stopEyeTracking = useCallback(() => {
     setTrackingMode('mouse');
     setIsCalibrated(false);
+    smoothedGazeRef.current = { x: 0, y: 0 }; // Reset stabilizer
+    setGazeTrail([]);
   }, []);
+
+  // Phase 45: Mouse Simulation Bridge
+  useEffect(() => {
+    if (trackingMode !== 'mouse') return;
+
+    const handleMouseMove = (e) => {
+      handleIrisUpdate({
+        gaze: { x: e.clientX, y: e.clientY },
+        head: { x: 0, y: 0, z: 0 },
+        accuracy: 100,
+        confidence: 1.0,
+      });
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    return () => window.removeEventListener('mousemove', handleMouseMove);
+  }, [trackingMode, handleIrisUpdate]);
 
   return {
     trackingMode,

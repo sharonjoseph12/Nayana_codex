@@ -26,11 +26,11 @@ export default function AnalyticsPage({ clinicalLog, vitals, clinicalAI, convers
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
             <div className="rounded-[24px] border border-white/8 bg-white/[0.03] p-4">
               <div className="text-xs uppercase tracking-[0.24em] text-white/35">Focus</div>
-              <div className="mt-2 text-3xl text-white">{vitals.focusScore}%</div>
+              <div className="mt-2 text-3xl text-white">{Math.round(vitals?.focusScore || 0)}%</div>
             </div>
             <div className="rounded-[24px] border border-white/8 bg-white/[0.03] p-4">
               <div className="text-xs uppercase tracking-[0.24em] text-white/35">Fatigue Risk</div>
-              <div className="mt-2 text-3xl text-white">{vitals.fatigueRisk}</div>
+              <div className="mt-2 text-3xl text-white">{vitals?.fatigueRisk || 'Stable'}</div>
             </div>
           </div>
         </div>
@@ -42,8 +42,8 @@ export default function AnalyticsPage({ clinicalLog, vitals, clinicalAI, convers
 AnalyticsPage.propTypes = {
   clinicalLog: PropTypes.arrayOf(PropTypes.object).isRequired,
   vitals: PropTypes.shape({
-    focusScore: PropTypes.number.isRequired,
-    fatigueRisk: PropTypes.string.isRequired,
+    focusScore: PropTypes.number,
+    fatigueRisk: PropTypes.string,
   }).isRequired,
   clinicalAI: PropTypes.shape({
     riskHistory: PropTypes.array.isRequired,

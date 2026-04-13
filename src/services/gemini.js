@@ -69,9 +69,22 @@ async function callGeminiProxy(prompt, generationConfig, systemInstruction) {
 }
 
 /**
+ * Builds a patient identity string for AI prompts.
+ * Falls back to a safe default if no patient object is provided.
+ */
+function patientIdentity(patient) {
+  if (!patient) return 'Patient: Unknown | Condition: Unknown | Room: Unknown';
+  const name = patient.name || 'Unknown Patient';
+  const condition = patient.condition || 'Unknown Condition';
+  const room = patient.room || 'Unknown Room';
+  const age = patient.age ? ` | Age: ${patient.age}` : '';
+  return `Patient: ${name}${age} | Condition: ${condition} | Room: ${room}`;
+}
+
+/**
  * Phase 22 & 36: Predictive AI engine to anticipate patient needs.
  */
-export async function predictNextNeeds(clinicalLog, vitals, language = 'en') {
+export async function predictNextNeeds(clinicalLog, vitals, language = 'en', patient = null) {
   const logSummary = clinicalLog
     .slice(-10)
     .map(entry => `Patient said: ${entry.quadrant}->${entry.phrase}`)
@@ -84,7 +97,7 @@ export async function predictNextNeeds(clinicalLog, vitals, language = 'en') {
     hour >= 17 && hour < 22 ? 'evening (dinner/handover)' : 'late night (sleep/comfort)';
 
   const prompt = `You are a predictive clinical AI. Anticipate the next 3 most likely phrases this paralyzed ICU patient will want to say.
-Patient: Arjun Mehta | ALS Stage 2
+${patientIdentity(patient)}
 Context:
 - Current Time: ${timeLabel}
 - Heart Rate: ${vitals.heartRate} BPM
@@ -163,11 +176,15 @@ export async function generateSentence(
     ? `\nEnvironmental context:\n${envLines.join('\n')}\n`
     : '';
 
+  // Use real patient name/condition from envContext.patient if available
+  const patientName = envContext.patient?.name || 'the patient';
+  const patientCondition = envContext.patient?.condition || 'paralysis';
+
   const systemInstruction = language !== 'en'
     ? `You are a multilingual assistive communication AI. ${LANG_INSTRUCTIONS[language]} Output ONLY the sentence in ${langName} script. Never use English or Latin characters in your response.`
     : `You are an assistive communication AI. Generate a single natural English sentence.`;
 
-  const prompt = `Patient: Arjun Mehta (paralyzed, using gaze-based AAC device).
+  const prompt = `Patient: ${patientName} (${patientCondition}, using gaze-based AAC device).
 ${historyContext ? `Recent conversation:\n${historyContext}\n` : ''}${envBlock}
 Selected category: "${quadrant}" | Selected intent: "${phrase}".
 
@@ -201,9 +218,9 @@ Output ONLY the sentence. No quotes. No explanation. No English if language is n
   }
 }
 
-export async function generateRiskAssessment(patterns) {
+export async function generateRiskAssessment(patterns, patient = null) {
   const prompt = `You are a clinical AI analyzing an ICU patient's communication patterns.
-Patient: Arjun Mehta | ALS Stage 2 | ICU-7
+${patientIdentity(patient)}
 
 Analysis:
 - Pain mentions (2hr): ${patterns.repeatedPain}
@@ -262,7 +279,7 @@ Respond ONLY in JSON:
   }
 }
 
-export async function generateHandoverReport(clinicalLog, vitals, riskData) {
+export async function generateHandoverReport(clinicalLog, vitals, riskData, patient = null) {
   const commSummary =
     clinicalLog
       .slice(-10)
@@ -272,11 +289,15 @@ export async function generateHandoverReport(clinicalLog, vitals, riskData) {
       )
       .join('\n') || 'No communications recorded.';
 
+  const patientInfo = patientIdentity(patient);
+  const staffName = patient?.staffName ? `\nRecording Staff: ${patient.staffName}` : '';
+
   const prompt = `You are a clinical documentation AI. Write a 3-sentence nurse handover report.
-Patient: Arjun Mehta | ALS Stage 2 | ICU-7
+${patientInfo}${staffName}
 Risk: ${riskData.riskScore ?? riskData.score}/100 - ${riskData.riskLevel ?? riskData.level}
 Heart Rate: ${vitals.heartRate} BPM | Stress: ${vitals.stressLevel}
-Communications: ${clinicalLog.length} total
+Session Duration: ${vitals.formatDuration ? vitals.formatDuration(vitals.sessionDuration) : 'Unknown'}
+Total Communications: ${clinicalLog.length}
 Log: ${commSummary}
 Write formally in third person. Cover: communication status, risk assessment, recommended next-shift actions.`;
 
@@ -288,6 +309,7 @@ Write formally in third person. Cover: communication status, risk assessment, re
 
     return data.text?.trim() || 'Report generation failed.';
   } catch {
-    return `Patient Arjun Mehta communicated ${clinicalLog.length} times during this session using gaze-assisted intent selection. Current risk level is ${riskData.riskLevel ?? riskData.level}, with heart rate ${vitals.heartRate} BPM and stress level ${vitals.stressLevel}. The incoming team should continue communication support, review recent requests, and monitor for escalation in pain, respiratory distress, or emergency phrases.`;
+    const name = patient?.name || 'The patient';
+    return `${name} communicated ${clinicalLog.length} times during this session using gaze-assisted intent selection. Current risk level is ${riskData.riskLevel ?? riskData.level}, with heart rate ${vitals.heartRate} BPM and stress level ${vitals.stressLevel}. The incoming team should continue communication support, review recent requests, and monitor for escalation in pain, respiratory distress, or emergency phrases.`;
   }
 }

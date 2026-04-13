@@ -18,7 +18,9 @@ export default function PhraseGrid({
   onBack,
   translations,
   densityMode = 'normal',
-  lastSelectedPhrase
+  lastSelectedPhrase,
+  favorites = [],
+  onToggleFavorite
 }) {
   const Icon = config.icon || Activity;
   const isBackDwelling = dwellingOn === 'btn-back';
@@ -83,6 +85,8 @@ export default function PhraseGrid({
           dwellingOn={dwellingOn}
           dwellProgress={dwellProgress}
           isLocked={isLocked}
+          favorites={favorites}
+          onToggleFavorite={onToggleFavorite}
         />
       </div>
       
