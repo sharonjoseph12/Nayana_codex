@@ -100,7 +100,7 @@ export default function GazeEngine({ faceDetected, onGazeUpdate, onError, isEnab
         // --- Phase 19: Hardware & Environmental Diagnostics ---
         const canvas = canvasRef.current;
         const video = videoRef.current;
-        const ctx = canvas?.getContext('2d');
+        const ctx = canvas?.getContext('2d', { willReadFrequently: true });
         let brightness = 0;
         
         // Throttled brightness check (every ~60 frames)
